@@ -1,0 +1,22 @@
+version: '3'
+
+dotenv: ['.env', 'secrets/.env']
+
+vars:
+  TASK_PORT: 22180
+  PUBLIC_HOSTNAME: "https://success-stability-combat-characterization.trycloudflare.com"
+
+tasks:
+  task-build:
+    desc: Build the go application
+    cmds:
+      - go build .
+  task-tunnel:
+    desc: Start cloudflare tunnel
+    cmds:
+      - cloudflared tunnel --url http://localhost:{{.TASK_PORT}}
+  task-healthcheck:
+    desc: Check if the application is healthy
+    cmds:
+      -  |
+        curl -v -H "Content-Type: application/json" {{.PUBLIC_HOSTNAME}}/healthcheck

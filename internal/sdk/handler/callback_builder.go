@@ -6,7 +6,7 @@ package handler
 import (
 	"encoding/json"
 
-	"github.com/hashicorp/terraform-run-task-scaffolding-go/internal/sdk/api"
+	"github.com/straubt1/terraform-run-task/internal/sdk/api"
 )
 
 // TypeTaskResults is the data type used in run task responses.

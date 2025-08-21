@@ -4,13 +4,14 @@ dotenv: ['.env', 'secrets/.env']
 
 vars:
   TASK_PORT: 22180
+  BUILD_FOLDER: bin/
   PUBLIC_HOSTNAME: "https://success-stability-combat-characterization.trycloudflare.com"
 
 tasks:
   task-build:
     desc: Build the go application
     cmds:
-      - go build .
+      - go build -o {{.BUILD_FOLDER}}
   task-tunnel:
     desc: Start cloudflare tunnel
     cmds:

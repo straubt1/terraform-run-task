@@ -6,7 +6,7 @@ package main
 import (
 	"flag"
 
-	"github.com/hashicorp/terraform-run-task-scaffolding-go/internal/runtask"
+	"github.com/straubt1/terraform-run-task/internal/runtask"
 )
 
 func main() {

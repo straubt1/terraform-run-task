@@ -14,8 +14,8 @@ import (
 	"github.com/gorilla/mux"
 	tfjson "github.com/hashicorp/terraform-json"
 
-	"github.com/hashicorp/terraform-run-task-scaffolding-go/internal/sdk/api"
-	"github.com/hashicorp/terraform-run-task-scaffolding-go/internal/sdk/handler"
+	"github.com/straubt1/terraform-run-task/internal/sdk/api"
+	"github.com/straubt1/terraform-run-task/internal/sdk/handler"
 )
 
 func HandleRequests(task *ScaffoldingRunTask) {

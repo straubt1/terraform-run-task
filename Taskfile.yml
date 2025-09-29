@@ -4,20 +4,69 @@ dotenv: ['.env', 'secrets/.env']
 
 vars:
   TASK_PORT: 22180
-  BUILD_FOLDER: bin/
-  PUBLIC_HOSTNAME: "https://success-stability-combat-characterization.trycloudflare.com"
+  BUILD_FOLDER: bin
+  TUNNEL_FOLDER: bin/tunnel
+  PUBLIC_HOSTNAME: "https://pools-counseling-collaboration-extreme.trycloudflare.com"
 
 tasks:
-  task-build:
+  build:
     desc: Build the go application
     cmds:
-      - go build -o {{.BUILD_FOLDER}}
-  task-tunnel:
+      - go build -o {{.BUILD_FOLDER}}/
+  run:
+    desc: Run the application
+    dir: "{{.BUILD_FOLDER}}"
+    cmds:
+      - "./terraform-run-task -port {{.TASK_PORT}}"
+  tunnel:
     desc: Start cloudflare tunnel
     cmds:
-      - cloudflared tunnel --url http://localhost:{{.TASK_PORT}}
-  task-healthcheck:
-    desc: Check if the application is healthy
+      - cloudflared tunnel --url http://localhost:{{.TASK_PORT}} | tee tunnel.log
+
+  tunnel-with-url:
+    desc: Start cloudflare tunnel and extract URL to url.txt
     cmds:
-      -  |
-        curl -v -H "Content-Type: application/json" {{.PUBLIC_HOSTNAME}}/healthcheck
+      - |
+        echo "Starting tunnel and monitoring for URL..."
+        # Start cloudflared in background and capture output
+        mkdir -p {{.TUNNEL_FOLDER}}
+        cloudflared tunnel --url http://localhost:{{.TASK_PORT}} 2>&1 | tee {{.TUNNEL_FOLDER}}/tunnel.log &
+        
+        # Monitor the log file for URL pattern
+        echo "Monitoring tunnel output for URL..."
+        timeout=10  # seconds
+        counter=0
+        
+        while [ $counter -lt $timeout ]; do
+          if [ -f {{.TUNNEL_FOLDER}}/tunnel.log ]; then
+            # Look for URL pattern in the log
+            URL=$(grep -oE 'https://[a-zA-Z0-9-]+\.trycloudflare\.com' {{.TUNNEL_FOLDER}}/tunnel.log | tail -1)
+            if [ ! -z "$URL" ]; then
+              echo "Found tunnel URL: $URL"
+              echo "$URL" > {{.TUNNEL_FOLDER}}/url.txt
+              echo "URL written to url.txt"
+              break
+            fi
+          fi
+          sleep 1
+          counter=$((counter + 1))
+        done
+        
+        # if [ $counter -eq $timeout ]; then
+        #   echo "Timeout: No URL found in $timeout seconds"
+        #   exit 1
+        # fi
+        
+        echo "Tunnel is running..."
+  
+  healthcheck-dynamic:
+    desc: Check health using dynamic tunnel URL from url.txt
+    cmds:
+      - |
+        if [ -f {{.TUNNEL_FOLDER}}/url.txt ]; then
+          DYNAMIC_URL=$(cat {{.TUNNEL_FOLDER}}/url.txt)
+          echo "Using dynamic URL: $DYNAMIC_URL/healthcheck"
+          curl -v -H "Content-Type: application/json" "$DYNAMIC_URL/healthcheck"
+        else
+          echo "No tunnel URL found in url.txt. Run 'task tunnel-with-url' first."
+        fi

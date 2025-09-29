@@ -21,6 +21,7 @@
 go.work
 .terraform/
 .terraform.*
-*.tfstate
+*.tfstate*
 secrets/
 bin/
+.DS_Store

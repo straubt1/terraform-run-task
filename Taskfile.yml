@@ -23,6 +23,8 @@ tasks:
     cmds:
       - cloudflared tunnel --url http://localhost:{{.TASK_PORT}} | tee tunnel.log
 
+  tunnel-kill:
+    cmd: kill -9 $(pgrep -f "cloudflared tunnel")
   tunnel-with-url:
     desc: Start cloudflare tunnel and extract URL to url.txt
     cmds:
@@ -59,7 +61,7 @@ tasks:
         
         echo "Tunnel is running..."
   
-  healthcheck-dynamic:
+  healthcheck:
     desc: Check health using dynamic tunnel URL from url.txt
     cmds:
       - |

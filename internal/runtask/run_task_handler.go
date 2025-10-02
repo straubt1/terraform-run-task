@@ -4,19 +4,13 @@
 package runtask
 
 import (
-	"archive/tar"
-	"bytes"
-	"compress/gzip"
 	"encoding/json"
-	"fmt"
 	"io"
 	"net/http"
 	"os"
-	"path/filepath"
 	"strings"
 
 	"github.com/gorilla/mux"
-	tfjson "github.com/hashicorp/terraform-json"
 
 	"github.com/straubt1/terraform-run-task/internal/sdk/api"
 	"github.com/straubt1/terraform-run-task/internal/sdk/handler"
@@ -55,17 +49,11 @@ func healthcheck(task *ScaffoldingRunTask) func(w http.ResponseWriter, r *http.R
 	}
 }
 
-// INFO: 2025/09/23 12:13:28 /runtask called
-// INFO: 2025/09/23 12:13:28 handleTFCRequestWrapper() - start
-// INFO: 2025/09/23 12:13:28 Successfully verified request
-// INFO: 2025/09/23 12:13:28 sendTFCCallbackResponse() - start
-// INFO: 2025/09/23 12:13:28 Sent run task response to TFC
-// INFO: 2025/09/23 12:13:28 sendTFCCallbackResponse() - end
-// INFO: 2025/09/23 12:13:28 handleTFCRequestWrapper() - end
+// This is the entry point for a Run Task request from HCP Terraform.
+// It validates the request, determines the stage, and calls the appropriate stage function.
 func handleTFCRequestWrapper(task *ScaffoldingRunTask, original func(http.ResponseWriter, *http.Request, api.Request, *ScaffoldingRunTask, *handler.CallbackBuilder)) func(http.ResponseWriter, *http.Request) {
 	return func(w http.ResponseWriter, r *http.Request) {
 		task.logger.Println(task.config.Path + " called")
-		task.logger.Println("handleTFCRequestWrapper() - start")
 
 		// Parse request
 		var runTaskReq api.Request
@@ -82,7 +70,17 @@ func handleTFCRequestWrapper(task *ScaffoldingRunTask, original func(http.Respon
 			http.Error(w, "Bad Request", http.StatusBadRequest)
 			return
 		}
-		task.logger.Println("Run Task Stage:", runTaskReq.Stage)
+		// Extract hostname from the TaskResultCallbackURL
+		// e.g., "https://app.terraform.io/api/v2/task-results/..." -> "https://app.terraform.io"
+		hostname := ""
+		if idx := strings.Index(runTaskReq.TaskResultCallbackURL, "/api/"); idx != -1 {
+			hostname = runTaskReq.TaskResultCallbackURL[:idx]
+		} else {
+			task.logger.Println("Error extracting hostname from TaskResultCallbackURL")
+		}
+		runTaskReq.Hostname = hostname
+
+		task.logger.Println("Run Task Stage:", runTaskReq.Stage, "for workspace:", runTaskReq.WorkspaceName, "and run ID:", runTaskReq.RunID)
 
 		requestSha := r.Header.Get(handler.HeaderTaskSignature)
 
@@ -124,72 +122,37 @@ func handleTFCRequestWrapper(task *ScaffoldingRunTask, original func(http.Respon
 			return
 		}
 
+		// Call the appropriate stage function based on the stage in the request
 		var stageResponse *handler.CallbackBuilder
 		var stageError error
-		// Call the appropriate stage function based on the stage in the request
-		// var stageResponse, stageError *handler.CallbackBuilder error
-		// stageResponse, stageError
 		if runTaskReq.Stage == api.PrePlan {
-			task.logger.Println("Running in the pre-plan stage")
 			stageResponse, stageError = task.PrePlanStage(runTaskReq)
 		} else if runTaskReq.Stage == api.PostPlan {
-			task.logger.Println("Running in the post-plan stage")
 			stageResponse, stageError = task.PostPlanStage(runTaskReq)
 		} else if runTaskReq.Stage == api.PreApply {
-			task.logger.Println("Running in the pre-apply stage")
 			stageResponse, stageError = task.PreApplyStage(runTaskReq)
 		} else if runTaskReq.Stage == api.PostApply {
-			task.logger.Println("Running in the post-apply stage")
 			stageResponse, stageError = task.PostApplyStage(runTaskReq)
 		} else {
 			task.logger.Println("Run task is running in an unknown stage:", runTaskReq.Stage)
 			http.Error(w, "Bad Request: unknown stage "+runTaskReq.Stage, http.StatusBadRequest)
 			return
 		}
+
 		if stageError != nil {
 			task.logger.Println("Error occurred during stage execution:", stageError.Error())
 			http.Error(w, "Error during stage execution:"+stageError.Error(), http.StatusInternalServerError)
 			return
 		}
 
-		// callbackResp, err := task.VerifyRequest(runTaskReq)
-		// if err != nil {
-		// 	task.logger.Println("Error occurred during run task request verification")
-		// 	http.Error(w, "Error during run task request verification:"+err.Error(), http.StatusInternalServerError)
-		// 	return
-		// }
-
-		// // Get TFC Plan if the task is running in the post-plan or pre-apply stages
-		// if runTaskReq.Stage == api.PostPlan || runTaskReq.Stage == api.PreApply {
-		// 	plan, err := retrieveTFCPlan(runTaskReq)
-
-		// 	if err != nil {
-		// 		task.logger.Println("Error occurred while retrieving plan from TFC")
-		// 		http.Error(w, "Bad Request: "+err.Error(), http.StatusNotFound)
-		// 		return
-		// 	}
-		// 	task.logger.Println("Successfully retrieved plan from TFC")
-
-		// 	callbackResp, err = task.VerifyPlan(runTaskReq, plan)
-		// 	if err != nil {
-		// 		task.logger.Println("Error occurred while verifying plan")
-		// 		http.Error(w, "Error verifying plan:"+err.Error(), http.StatusInternalServerError)
-		// 		return
-		// 	}
-		// }
-
+		// Call the original function to send the response back to TFC with the stage result
 		original(w, r, runTaskReq, task, stageResponse)
-		// original(w, r, runTaskReq, task, callbackResp)
-
-		task.logger.Println("handleTFCRequestWrapper() - end")
 	}
 }
 
-// These functions reply back to HCP Terraform with the task result for the Stage.
+// Function to reply back to HCP Terraform with the task result for the Stage.
 func sendTFCCallbackResponse() func(w http.ResponseWriter, r *http.Request, reqBody api.Request, task *ScaffoldingRunTask, cbBuilder *handler.CallbackBuilder) {
-
 	return func(w http.ResponseWriter, r *http.Request, reqBody api.Request, task *ScaffoldingRunTask, cbBuilder *handler.CallbackBuilder) {
-
 		respBody, err := cbBuilder.MarshallJSON()
 		if err != nil {
 			task.logger.Println("Unable to marshall callback response to TFC")
@@ -198,7 +161,7 @@ func sendTFCCallbackResponse() func(w http.ResponseWriter, r *http.Request, reqB
 		}
 
 		// Send PATCH callback response to TFC
-		request, err := sendTFCRequest(reqBody.TaskResultCallbackURL, http.MethodPatch, reqBody.AccessToken, respBody)
+		request, err := sendGenericHttpRequest(reqBody.TaskResultCallbackURL, http.MethodPatch, reqBody.AccessToken, respBody)
 		if request != nil {
 			_ = r.Body.Close()
 		}
@@ -210,233 +173,57 @@ func sendTFCCallbackResponse() func(w http.ResponseWriter, r *http.Request, reqB
 
 		task.logger.Println("Sent run task response to TFC")
 	}
-
 }
 
-func retrieveTFCPlan(req api.Request) (tfjson.Plan, error) {
+// func retrieveTFCPlan(req api.Request) (tfjson.Plan, error) {
 
-	// Call TFC to get plan
-	resp, err := sendTFCRequest(req.PlanJSONAPIURL, "GET", req.AccessToken, nil)
-	if err != nil {
-		return tfjson.Plan{}, err
-	}
+// 	// Call TFC to get plan
+// 	resp, err := sendGenericHttpRequest(req.PlanJSONAPIURL, "GET", req.AccessToken, nil)
+// 	if err != nil {
+// 		return tfjson.Plan{}, err
+// 	}
 
-	var tfPlan tfjson.Plan
+// 	var tfPlan tfjson.Plan
 
-	if resp == nil {
-		return tfPlan, fmt.Errorf("expected Terraform plan from TFC but received none")
-	}
+// 	if resp == nil {
+// 		return tfPlan, fmt.Errorf("expected Terraform plan from TFC but received none")
+// 	}
 
-	respBody, err := io.ReadAll(resp.Body)
+// 	respBody, err := io.ReadAll(resp.Body)
 
-	_ = resp.Body.Close()
+// 	_ = resp.Body.Close()
 
-	if err != nil {
-		return tfPlan, err
-	}
+// 	if err != nil {
+// 		return tfPlan, err
+// 	}
 
-	err = json.Unmarshal(respBody, &tfPlan)
+// 	err = json.Unmarshal(respBody, &tfPlan)
 
-	if err != nil {
-		return tfPlan, err
-	}
+// 	if err != nil {
+// 		return tfPlan, err
+// 	}
 
-	return tfPlan, nil
-}
+// 	return tfPlan, nil
+// }
 
-// sends a generic HTTP request to TFC with the required headers
-func sendTFCRequest(url string, method string, accessToken string, body []byte) (*http.Response, error) {
-	req, err := http.NewRequest(method, url, bytes.NewReader(body))
-	if err != nil {
-		fmt.Printf("client: could not create request: %s\n", err)
-		os.Exit(1)
-	}
+// // sends a generic HTTP request to TFC with the required headers
+// func sendTFCRequest(url string, method string, accessToken string, body []byte) (*http.Response, error) {
+// 	req, err := http.NewRequest(method, url, bytes.NewReader(body))
+// 	if err != nil {
+// 		fmt.Printf("client: could not create request: %s\n", err)
+// 		os.Exit(1)
+// 	}
 
-	// Required headers to send to TFC
-	req.Header.Set("Content-Type", api.JsonApiMediaTypeHeader)
-	req.Header.Set("Authorization", "Bearer "+accessToken)
-	return http.DefaultClient.Do(req)
-}
+// 	// Required headers to send to TFC
+// 	req.Header.Set("Content-Type", api.JsonApiMediaTypeHeader)
+// 	req.Header.Set("Authorization", "Bearer "+accessToken)
+// 	return http.DefaultClient.Do(req)
+// }
 
-func saveRequestToFile(filePath string, request api.Request) error {
-	// filePath := fmt.Sprintf("%s/request.json", runTaskPath)
-	file, err := os.Create(filePath)
-	if err != nil {
-		// r.logger.Println("Error creating request.json:", err)
-		// return handler.NewCallbackBuilder(api.TaskFailed).WithMessage("Failed to create request.json: " + err.Error()), err
-		return err
-	}
-	defer file.Close()
-
-	encoder := json.NewEncoder(file)
-	encoder.SetIndent("", "  ")
-	if err := encoder.Encode(request); err != nil {
-		// r.logger.Println("Error encoding request to JSON:", err)
-		// return handler.NewCallbackBuilder(api.TaskFailed).WithMessage("Failed to encode request to JSON: " + err.Error()), err
-		return err
-	}
-	return nil
-}
-
-func downloadPlanFile(filePath string, request api.Request) error {
-	url := strings.TrimSuffix(request.PlanJSONAPIURL, "/json-output")
-	req, err := http.NewRequest("GET", url, nil)
-	if err != nil {
-		return fmt.Errorf("failed to create request: %w", err)
-	}
-	// this token doesnt have the proper permissions
-	req.Header.Set("Authorization", "Bearer "+"request.AccessToken")
-	req.Header.Set("Content-Type", api.JsonApiMediaTypeHeader)
-
-	resp, err := http.DefaultClient.Do(req)
-	if err != nil {
-		return fmt.Errorf("failed to download plan file: %w", err)
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode != http.StatusOK {
-		return fmt.Errorf("unexpected status code: %d", resp.StatusCode)
-	}
-
-	// Read the response body
-	body, err := io.ReadAll(resp.Body)
-	if err != nil {
-		return fmt.Errorf("failed to read response body: %w", err)
-	}
-
-	// Unmarshal and marshal with indentation for pretty JSON
-	var prettyJSON bytes.Buffer
-	if err := json.Indent(&prettyJSON, body, "", "  "); err != nil {
-		return fmt.Errorf("failed to pretty print JSON: %w", err)
-	}
-
-	out, err := os.Create(filePath)
-	if err != nil {
-		return fmt.Errorf("failed to create file: %w", err)
-	}
-	defer out.Close()
-
-	_, err = out.Write(prettyJSON.Bytes())
-	if err != nil {
-		return fmt.Errorf("failed to write file: %w", err)
-	}
-
-	return nil
-}
-
-func downloadPlanJsonFile(filePath string, request api.Request) error {
-	req, err := http.NewRequest("GET", request.PlanJSONAPIURL, nil)
-	if err != nil {
-		return fmt.Errorf("failed to create request: %w", err)
-	}
-	req.Header.Set("Authorization", "Bearer "+request.AccessToken)
-	req.Header.Set("Content-Type", api.JsonApiMediaTypeHeader)
-
-	resp, err := http.DefaultClient.Do(req)
-	if err != nil {
-		return fmt.Errorf("failed to download plan file: %w", err)
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode != http.StatusOK {
-		return fmt.Errorf("unexpected status code: %d", resp.StatusCode)
-	}
-
-	// Read the response body
-	body, err := io.ReadAll(resp.Body)
-	if err != nil {
-		return fmt.Errorf("failed to read response body: %w", err)
-	}
-
-	// Unmarshal and marshal with indentation for pretty JSON
-	var prettyJSON bytes.Buffer
-	if err := json.Indent(&prettyJSON, body, "", "  "); err != nil {
-		return fmt.Errorf("failed to pretty print JSON: %w", err)
-	}
-
-	out, err := os.Create(filePath)
-	if err != nil {
-		return fmt.Errorf("failed to create file: %w", err)
-	}
-	defer out.Close()
-
-	_, err = out.Write(prettyJSON.Bytes())
-	if err != nil {
-		return fmt.Errorf("failed to write file: %w", err)
-	}
-
-	return nil
-}
-
-// extractTarGz extracts a tar.gz file to a directory with the specified ID
-func extractTarGz(directory, filename, id string) error {
-	// Create the target directory path
-	targetDir := filepath.Join(directory, id)
-
-	// Create the directory if it doesn't exist
-	if err := os.MkdirAll(targetDir, 0755); err != nil {
-		return fmt.Errorf("failed to create directory %s: %w", targetDir, err)
-	}
-
-	// Open the tar.gz file
-	file, err := os.Open(filename)
-	if err != nil {
-		return fmt.Errorf("failed to open file %s: %w", filename, err)
-	}
-	defer file.Close()
-
-	// Create a gzip reader
-	gzReader, err := gzip.NewReader(file)
-	if err != nil {
-		return fmt.Errorf("failed to create gzip reader: %w", err)
-	}
-	defer gzReader.Close()
-
-	// Create a tar reader
-	tarReader := tar.NewReader(gzReader)
-
-	// Extract files from the tar archive
-	for {
-		header, err := tarReader.Next()
-		if err == io.EOF {
-			break // End of archive
-		}
-		if err != nil {
-			return fmt.Errorf("failed to read tar header: %w", err)
-		}
-
-		// Create the full path for the file
-		targetPath := filepath.Join(targetDir, header.Name)
-
-		// Ensure the target path is within the target directory (security check)
-		if !filepath.HasPrefix(targetPath, filepath.Clean(targetDir)+string(os.PathSeparator)) {
-			return fmt.Errorf("invalid file path: %s", header.Name)
-		}
-
-		switch header.Typeflag {
-		case tar.TypeDir:
-			// Create directory
-			if err := os.MkdirAll(targetPath, os.FileMode(header.Mode)); err != nil {
-				return fmt.Errorf("failed to create directory %s: %w", targetPath, err)
-			}
-		case tar.TypeReg:
-			// Create file
-			if err := os.MkdirAll(filepath.Dir(targetPath), 0755); err != nil {
-				return fmt.Errorf("failed to create parent directory for %s: %w", targetPath, err)
-			}
-
-			outFile, err := os.OpenFile(targetPath, os.O_CREATE|os.O_WRONLY, os.FileMode(header.Mode))
-			if err != nil {
-				return fmt.Errorf("failed to create file %s: %w", targetPath, err)
-			}
-
-			if _, err := io.Copy(outFile, tarReader); err != nil {
-				outFile.Close()
-				return fmt.Errorf("failed to write file %s: %w", targetPath, err)
-			}
-			outFile.Close()
-		}
-	}
-
-	return nil
+// Get an access token with more permissions than the one provided in the request
+// This token needs the following permissions:
+//   - workspace:read
+func getPermissiveToken() string {
+	token := os.Getenv("TFE_API_TOKEN")
+	return token
 }

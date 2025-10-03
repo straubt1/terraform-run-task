@@ -1,56 +1,275 @@
-# Terraform Run Task - Gettting Started
+# Terraform Run Task - Getting Started
 
-The repository contains everything you need to get starting creating your own [Terraform Cloud](https://developer.hashicorp.com/terraform/cloud-docs/workspaces/settings/run-tasks) and/or [Terraform Enterprise](https://developer.hashicorp.com/terraform/enterprise/workspaces/settings/run-tasks) run task.
+A comprehensive example implementation of a Terraform Run Task that helps you understand how to build custom run tasks and explore the data available at each stage of the Terraform lifecycle.
 
+This project serves as both a learning tool and a starting point for building your own run tasks. It demonstrates how to intercept and process data during the four key stages of a Terraform run: pre-plan, post-plan, pre-apply, and post-apply.
 
+## What is a Terraform Run Task?
 
+Run tasks are custom HTTP services that HCP Terraform or Terraform Enterprise can call during specific stages of a Terraform run. They enable you to integrate custom validation, compliance checks, notifications, or any other logic into your Terraform workflow.
 
-This repository is a *template* for a [Terraform Cloud](https://developer.hashicorp.com/terraform/cloud-docs/workspaces/settings/run-tasks) and/or [Terraform Enterprise](https://developer.hashicorp.com/terraform/enterprise/workspaces/settings/run-tasks) run task. It is intended as a starting point for creating Terraform run tasks, containing:
+> [!important]
+> This example focuses on HCP Terraform, but the concepts and code can be adapted for Terraform Enterprise as well.
 
-- A service handler for handling run task request/response (`internal/runtask/run_task_handler`),
-- A scaffolding template file for configuring the service or business verification logic of the run task (`internal/runtask/run_task_scaffolding`),
-- Miscellaneous meta files.
+## Architecture Overview
 
-These files contain boilerplate code that you will need to edit to create your own Terraform run task. Detailed documentation for run task integration can be found on the  [HashiCorp Developer](https://developer.hashicorp.com/terraform/cloud-docs/integrations/run-tasks) platform.
+```mermaid
+sequenceDiagram
+    participant TF as HCP Terraform
+    participant RT as Run Task Server
+    participant CF as Cloudflare Tunnel
+    participant FS as Local File System
 
-Please see the [GitHub template repository documentation](https://help.github.com/en/github/creating-cloning-and-archiving-repositories/creating-a-repository-from-a-template) for how to create a new repository from this template on GitHub.
+    Note over TF,FS: Run Task Lifecycle
+    
+    TF->>CF: 1. Pre-Plan Request
+    CF->>RT: Forward Request
+    RT->>TF: Fetch Run Data via API
+    RT->>TF: Download Configuration
+    RT->>FS: Save data to bin/{run-id}/1_pre_plan/
+    RT->>CF: Return Success/Failure
+    CF->>TF: Forward Response
+    
+    Note over TF: Terraform Plan Execution
+    
+    TF->>CF: 2. Post-Plan Request
+    CF->>RT: Forward Request
+    RT->>TF: Fetch Plan Data & Logs
+    RT->>FS: Save data to bin/{run-id}/2_post_plan/
+    RT->>CF: Return Success/Failure
+    CF->>TF: Forward Response
+    
+    Note over TF: User Approval (if required)
+    
+    TF->>CF: 3. Pre-Apply Request
+    CF->>RT: Forward Request
+    RT->>TF: Fetch Policy Checks, Comments, etc.
+    RT->>FS: Save data to bin/{run-id}/3_pre_apply/
+    RT->>CF: Return Success/Failure
+    CF->>TF: Forward Response
+    
+    Note over TF: Terraform Apply Execution
+    
+    TF->>CF: 4. Post-Apply Request
+    CF->>RT: Forward Request
+    RT->>TF: Fetch Apply Data & Logs
+    RT->>FS: Save data to bin/{run-id}/4_post_apply/
+    RT->>CF: Return Success/Failure
+    CF->>TF: Forward Response
+```
 
-## Requirements
+## Features
 
-- A Terraform Cloud account or Terraform Enterprise >= v202206-1
-  - To create a run task, you must have a user account with the [Manage Run Tasks](https://developer.hashicorp.com/terraform/cloud-docs/users-teams-organizations/permissions#manage-run-tasks) permission.
-  - To associate run tasks with a workspace, you need the [Manage Workspace Run Tasks](https://developer.hashicorp.com/terraform/cloud-docs/users-teams-organizations/permissions#general-workspace-permissions) permission on that particular workspace.
-- [Go](https://golang.org/doc/install) >= 1.20
+- **Full Stage Coverage**: Implements all four run task stages (pre-plan, post-plan, pre-apply, post-apply)
+- **Data Collection**: Automatically downloads and saves relevant data from HCP Terraform APIs at each stage
+- **Local Development**: Uses Cloudflare Tunnel to expose your local server to HCP Terraform
+- **Structured Output**: Organizes collected data in a clear directory structure for easy exploration
+- **Task Automation**: Includes Task runner configuration for streamlined development workflow
 
-## Using The Run Task in TFC or TFE
+## What Data is Available?
 
-*We highly recommend using a tunneling solution like [ngrok](https://ngrok.com/) to quickly test your run task on your local machine.*
+This run task demonstrates the wealth of information available at each stage.
 
-1. Run the run task service using the Go `run` command:
+### All Stages
 
-    ```shell
-    go run main.go
-    ```
+- **Request payload**: The initial request from HCP Terraform (`request.json`)
+- **Run details**: Basic information about the Terraform run (`run_api.json`)
 
-   - Alternatively, you can run the service in debug mode with breakpoints using a debugger or an IDE
-2. Take note of the `path`, `hmac`, and `addr` values configured in `internal/runtask/run_task_scaffolding.Configure()`
-    - Default values: `path` = `/runtask`, `hmac` = `secret123`, `addr` = `:22180`
+### Pre-Plan Stage
 
-3. (Optional) If you are using a tunneling solution, run and configure it to use the same port (`addr` value) that the run task service is running on.
+- **Configuration files**: The actual Terraform code being executed (`{config-version-id}.tar.gz` and `{config-version-id}/`)
 
-3. Verify that the run task service is running by calling the `/healthcheck` endpoint:
+### Post-Plan Stage
 
-    ```shell
-    curl -v -H "Content-Type: application/json" <Service URL>/healthcheck
-    ```
+- **Configuration files**: The actual Terraform code being executed (`{config-version-id}.tar.gz` and `{config-version-id}/`)
+- **Terraform plan**: The Terraform plan in JSON format (`plan_json.json`)
+- **Plan details**: Basic information about the Plan (`plan_api.json`)
+- **Plan logs**: Detailed logs from Terraform Plan (`plan_logs.txt`)
 
-5. Follow the steps on the Hashicorp Developer platform for [Creating a Run Task](https://developer.hashicorp.com/terraform/cloud-docs/workspaces/settings/run-tasks#creating-a-run-task) and [Associating Run Tasks with a Workspace](https://developer.hashicorp.com/terraform/cloud-docs/workspaces/settings/run-tasks#associating-run-tasks-with-a-workspace)
-   - For the **Endpoint URL** field, append the `path` value to the end of your service's URL, ex: `http://myservice.io/runtask`
-   - For the **HMAC key** field, use the configured `hmac` value
+### Pre-Apply Stage
+
+- **Policy-check details**: Basic information about any policy checks (`policy-checks_api.json`)
+- **Comments details**: Any comments added to the run (`comments_api.json`)
+- **Task-stages details**: Basic information about the run task stages (`task_stages_api.json`)
+- **Run-events details**: Basic information about the run events (`run_events_api.json`)
+
+### Post-Apply Stage
+
+- **Apply details**: Basic information about the Apply (`apply_api.json`)
+- **Apply logs**: Detailed logs from the Apply (`apply_logs.txt`)
+- **Policy-check details**: Basic information about any policy checks (`policy-checks_api.json`)
+- **Comments details**: Any comments added to the run (`comments_api.json`)
+- **Task-stages details**: Basic information about the run task stages (`task_stages_api.json`)
+- **Run-events details**: Basic information about the run events (`run_events_api.json`)
+
+## Prerequisites
+
+Before getting started, make sure you have:
+
+- **Go 1.19+** installed
+- **Task** (task runner) - install via `brew install go-task/tap/go-task` on macOS
+- **Cloudflare CLI** (`cloudflared`) - install via `brew install cloudflared` on macOS
+- **Terraform** with access to HCP Terraform or Terraform Enterprise
+- An **HCP Terraform organization** where you can create workspaces and run tasks
+
+## Quick Start
+
+### Step 0: Set Up Environment
+
+create a `.env` file in the project root with the following content:
+
+```env
+TERRAFORM_API_TOKEN=your_hcp_terraform_api_token_here
+```
+
+This will be set when running the Task commands.
+
+### Step 1: Build and Run the Server
+
+The run task is implemented as a simple Go web server. Use the included Task runner commands:
+
+```bash
+# Generate HMAC key for secure communication
+task generate-hmac
+
+# Build the Go application
+task build
+
+# Run the server (runs on port 22180 by default)
+task run
+```
+
+The server will start and listen for incoming requests from HCP Terraform.
+
+### Step 2: Expose Your Local Server
+
+Since HCP Terraform needs to reach your local server, we use Cloudflare Tunnel to create a public endpoint:
+
+```bash
+# Start the tunnel (runs in background)
+task tunnel-start
+
+# Check if everything is working
+task healthcheck
+```
+
+The tunnel URL will be automatically saved to `bin/tunnel/tunnel.url` for use in the next step.
+
+### Step 3: Set Up HCP Terraform Resources
+
+Navigate to the setup directory and run Terraform to create the necessary resources:
+
+```bash
+cd test/setup
+
+# Update the organization name in main.tf to match your HCP Terraform org
+# Then initialize and apply
+terraform init
+terraform apply
+```
+
+This will create:
+
+- A run task in your HCP Terraform organization
+- A test workspace
+- The association between the workspace and run task
+
+### Step 4: Trigger a Test Run
+
+Now run Terraform in the test workspace to see the run task in action:
+
+```bash
+cd test/run
+terraform init
+terraform plan
+terraform apply
+```
+
+### Step 5: Explore the Generated Data
+
+After the run completes, check the `bin/local-runtask-test/` directory. You'll find a folder for each run with subdirectories for each stage:
+
+```text
+bin/local-runtask-test/
+└── run-{run-id}/
+    ├── 1_pre_plan/
+    │   ├── request.json
+    │   ├── run_api.json
+    │   ├── cv-{version-id}.tar.gz
+    │   └── cv-{version-id}/
+    ├── 2_post_plan/
+    │   ├── plan_json.json
+    │   ├── plan_logs.txt
+    │   └── ...
+    ├── 3_pre_apply/
+    │   ├── policy-checks_api.json
+    │   ├── comments_api.json
+    │   └── ...
+    └── 4_post_apply/
+        ├── apply_api.json
+        ├── apply_logs.txt
+        └── ...
+```
+
+## Development Tips
+
+### Customizing the Run Task
+
+The main run task logic is in `internal/runtask/run_task_stages.go`. Each stage method shows you:
+
+- How to receive the request from HCP Terraform
+- What APIs are available to call back to HCP Terraform
+- How to return success/failure responses
+
+### Configuration
+
+The run task server accepts these command-line flags:
+
+- `-port`: Server port (default: 22180)
+- `-path`: URL path for requests (default: /runtask)
+- `-hmacKey`: HMAC key for request validation
+
+### Debugging
+
+- Check `bin/tunnel/tunnel.log` for tunnel connection issues
+- Server logs will show incoming requests and processing details
+- The generated JSON files contain the exact data HCP Terraform sends
+
+## Next Steps
+
+Once you understand how the run task works, you can:
+
+1. **Add custom logic** to any of the four stage methods
+2. **Integrate with external systems** (monitoring, ticketing, etc.)
+3. **Implement validation rules** based on the plan data
+4. **Send notifications** about infrastructure changes
+5. **Create compliance reports** using the policy check data
+
+The beauty of run tasks is that you have access to the full Terraform context and can make decisions or take actions at the perfect moment in the workflow.
+
+## Troubleshooting
+
+### Run Task Not Triggered
+
+- Verify the tunnel is running and accessible via `task healthcheck`
+- Check that the workspace is properly associated with the run task
+- Ensure the HMAC key matches between the server and HCP Terraform
+
+### Authentication Issues
+
+- Verify your `TERRAFORM_API_TOKEN` environment variable is set correctly
+- Check that your token has sufficient permissions for the organization
+
+### Network Issues
+
+- Ensure cloudflared is installed and working
+- Check firewall settings if the tunnel can't start
 
 ## References
 
-- [Terraform Cloud](https://developer.hashicorp.com/terraform/cloud-docs/workspaces/settings/run-tasks)
-- [Terraform Enterprise](https://developer.hashicorp.com/terraform/enterprise/workspaces/settings/run-tasks)
+- [Terraform Cloud Run Tasks](https://developer.hashicorp.com/terraform/cloud-docs/workspaces/settings/run-tasks)
+- [Terraform Enterprise Run Tasks](https://developer.hashicorp.com/terraform/enterprise/workspaces/settings/run-tasks)
 - [Creating a Run Task](https://developer.hashicorp.com/terraform/cloud-docs/workspaces/settings/run-tasks#creating-a-run-task)
 - [Associating Run Tasks with a Workspace](https://developer.hashicorp.com/terraform/cloud-docs/workspaces/settings/run-tasks#associating-run-tasks-with-a-workspace)
+- [Run Task API Reference](https://developer.hashicorp.com/terraform/cloud-docs/api-docs/run-tasks)
+- [Cloudflare Tunnel Documentation](https://developers.cloudflare.com/cloudflare-one/connections/connect-apps/)

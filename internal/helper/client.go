@@ -95,7 +95,7 @@ func (c *Client) GetLogs(outputDirectory, logType string, request api.Request) e
 
 // GetPermissiveToken gets a permissive token from the environment variable
 func (c *Client) GetPermissiveToken() string {
-	return os.Getenv("PERMISSIVE_ACCESS_TOKEN")
+	return os.Getenv("TERRAFORM_API_TOKEN")
 }
 
 // GetHostname extracts the hostname from the task request callback URL

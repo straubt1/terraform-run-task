@@ -7,8 +7,6 @@ import (
 	"encoding/json"
 	"io"
 	"net/http"
-	"os"
-	"strings"
 
 	"github.com/gorilla/mux"
 
@@ -21,7 +19,8 @@ import (
 func HandleRequests(task *ScaffoldingRunTask) {
 	r := mux.NewRouter()
 
-	task.logger.Println("Registering " + task.config.Path + " route")
+	// Printing the HMAC key should be avoided in a production environment!
+	task.logger.Println("Registering " + task.config.Path + " route" + " with HMAC key set to " + task.config.HmacKey)
 	r.HandleFunc(task.config.Path, handleTFCRequestWrapper(task, sendTFCCallbackResponse())).
 		Methods(http.MethodPost)
 
@@ -51,7 +50,7 @@ func healthcheck(task *ScaffoldingRunTask) func(w http.ResponseWriter, r *http.R
 
 // This is the entry point for a Run Task request from HCP Terraform.
 // It validates the request, determines the stage, and calls the appropriate stage function.
-func handleTFCRequestWrapper(task *ScaffoldingRunTask, original func(http.ResponseWriter, *http.Request, api.Request, *ScaffoldingRunTask, *handler.CallbackBuilder)) func(http.ResponseWriter, *http.Request) {
+func handleTFCRequestWrapper(task *ScaffoldingRunTask, callback func(http.ResponseWriter, *http.Request, api.Request, *ScaffoldingRunTask, *handler.CallbackBuilder)) func(http.ResponseWriter, *http.Request) {
 	return func(w http.ResponseWriter, r *http.Request) {
 		task.logger.Println(task.config.Path + " called")
 
@@ -70,19 +69,6 @@ func handleTFCRequestWrapper(task *ScaffoldingRunTask, original func(http.Respon
 			http.Error(w, "Bad Request", http.StatusBadRequest)
 			return
 		}
-
-		// Extract hostname from the TaskResultCallbackURL
-		// e.g., "https://app.terraform.io/api/v2/task-results/..." -> "https://app.terraform.io"
-		hostname := ""
-		if idx := strings.Index(runTaskReq.TaskResultCallbackURL, "/api/"); idx != -1 {
-			hostname = runTaskReq.TaskResultCallbackURL[:idx]
-		} else {
-			task.logger.Println("Error extracting hostname from TaskResultCallbackURL")
-		}
-		runTaskReq.Hostname = hostname
-
-		// Get a permissive token from the environment variable, empty if not set
-		runTaskReq.PermissiveAccessToken = os.Getenv("TFE_API_TOKEN")
 
 		task.logger.Println("Run Task Stage:", runTaskReq.Stage, "for workspace:", runTaskReq.WorkspaceName, "and run ID:", runTaskReq.RunID)
 
@@ -115,11 +101,13 @@ func handleTFCRequestWrapper(task *ScaffoldingRunTask, original func(http.Respon
 				http.Error(w, "Unauthorized", http.StatusUnauthorized)
 				return
 			}
+			task.logger.Println("Successfully verified HMAC signature")
 		}
 
 		// IsEndpointValidation returns true if the Request is from the
-		// run task service to validate this API endpoint. Callers should
-		// immediately return an HTTP 200 status code for these requests.
+		// run task service to validate this API endpoint.
+		// This occurs when you create the Run Task in Organization
+		// Callers should immediately return an HTTP 200 status code for these requests.
 		if runTaskReq.IsEndpointValidation() {
 			task.logger.Println("Successfully validated TFC request - runTaskReq.IsEndpointValidation()")
 			w.WriteHeader(http.StatusOK)
@@ -150,7 +138,7 @@ func handleTFCRequestWrapper(task *ScaffoldingRunTask, original func(http.Respon
 		}
 
 		// Call the original function to send the response back to TFC with the stage result
-		original(w, r, runTaskReq, task, stageResponse)
+		callback(w, r, runTaskReq, task, stageResponse)
 	}
 }
 

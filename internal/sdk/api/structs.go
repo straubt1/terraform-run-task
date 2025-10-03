@@ -51,12 +51,6 @@ type Request struct {
 	WorkspaceName                   string    `json:"workspace_name"`
 	WorkspaceWorkingDirectory       string    `json:"workspace_working_directory,omitempty"`
 	PlanJSONAPIURL                  string    `json:"plan_json_api_url,omitempty"` // Specific to post-plan and pre-apply stage
-
-	// Added fields that are computed after the Run Task gets the request
-	// These fields are not sent by TFC, but are useful for processing the request
-	// and should be included in the request struct for convenience.
-	Hostname              string `json:"hostname,omitempty"`
-	PermissiveAccessToken string `json:"permissive_access_token,omitempty"`
 }
 
 // IsEndpointValidation returns true if the Request is from the

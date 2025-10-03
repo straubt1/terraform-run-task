@@ -1,8 +1,9 @@
 locals {
   organization_name = "terraform-tom"
   workspace_name    = "local-runtask-test"
-  run_task_name    = "local-runtask-test"
-  run_task_url     = "${chomp(file("../../bin/tunnel/url.txt"))}/runtask"
+  run_task_name     = "local-runtask-test"
+  run_task_url      = "${chomp(file("../../bin/tunnel/tunnel.url"))}/runtask"
+  hmac_key          = chomp(file("../../bin/hmac.key"))
 }
 
 resource "tfe_organization_run_task" "main" {
@@ -11,6 +12,7 @@ resource "tfe_organization_run_task" "main" {
   url          = local.run_task_url
   enabled      = true
   description  = "A run task for testing purposes that runs locally on my machine."
+  hmac_key     = local.hmac_key
 }
 
 resource "tfe_workspace" "main" {

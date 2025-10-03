@@ -5,11 +5,17 @@ dotenv: ['.env', 'secrets/.env']
 vars:
   TASK_PORT: 22180
   BUILD_FOLDER: bin
+  RUNTASK_HMACFILE: hmac.key
   TUNNEL_FOLDER: bin/tunnel
   TUNNEL_LOGFILE: "{{.TUNNEL_FOLDER}}/tunnel.log" # cloudflared background process logs output
   TUNNEL_URLFILE: "{{.TUNNEL_FOLDER}}/tunnel.url" # dynamic URL for the tunnel
 
 tasks:
+  generate-hmac:
+    desc: Generate a HMAC key and store it in a file. This will be read by Terraform to create the Run Task
+    cmds:
+      - mkdir -p {{.BUILD_FOLDER}}
+      - openssl rand -hex 32 > {{.BUILD_FOLDER}}/{{.RUNTASK_HMACFILE}}
   build:
     desc: Build the go application
     cmds:
@@ -18,7 +24,7 @@ tasks:
     desc: Run the application
     dir: "{{.BUILD_FOLDER}}"
     cmds:
-      - "./terraform-run-task -port {{.TASK_PORT}}"
+      - "./terraform-run-task -port {{.TASK_PORT}} -hmacKey $(cat {{.RUNTASK_HMACFILE}})"
 
 
   tunnel-start:
@@ -38,7 +44,6 @@ tasks:
 
         echo "Starting tunnel, logs found: {{.TUNNEL_LOGFILE}}"
         cloudflared tunnel --url http://localhost:{{.TASK_PORT}} > {{.TUNNEL_LOGFILE}} 2>&1 &
-        # cloudflared tunnel --url http://localhost:{{.TASK_PORT}} 2>&1 | tee {{.TUNNEL_LOGFILE}} &
         
         # Monitor the log file for URL pattern
         timeout=10  # seconds
@@ -67,10 +72,10 @@ tasks:
     desc: Check health using dynamic tunnel URL from url.txt
     cmds:
       - |
-        if [ -f {{.TUNNEL_FOLDER}}/url.txt ]; then
-          DYNAMIC_URL=$(cat {{.TUNNEL_FOLDER}}/url.txt)
+        if [ -f {{.TUNNEL_URLFILE}} ]; then
+          DYNAMIC_URL=$(cat {{.TUNNEL_URLFILE}})
           echo "Using dynamic URL: $DYNAMIC_URL/healthcheck"
           curl -v -H "Content-Type: application/json" "$DYNAMIC_URL/healthcheck"
         else
-          echo "No tunnel URL found in url.txt. Run 'task tunnel-with-url' first."
+          echo "No tunnel URL found in url.txt. Run 'task tunnel-start' first."
         fi

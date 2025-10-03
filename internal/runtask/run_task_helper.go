@@ -10,6 +10,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"strings"
 
 	"github.com/straubt1/terraform-run-task/internal/sdk/api"
 )
@@ -253,9 +254,10 @@ func getPlanLogs(outputDirectory string, request api.Request) error {
 
 // Get data (run, plan, apply) from the API and save it to files
 func getDataFromAPI(outputDirectory string, dataType string, request api.Request) error {
-	if request.PermissiveAccessToken == "" {
-		// If no token, skip this step
-		return nil
+	token := getPermissiveToken()
+	hostname := getHostname(request)
+	if token == "" {
+		return nil // If no token, skip this step
 	}
 	apiPath := dataType
 	if dataType == "run" { // no sub-path for run
@@ -263,13 +265,13 @@ func getDataFromAPI(outputDirectory string, dataType string, request api.Request
 	}
 	filePath := filepath.Join(outputDirectory, fmt.Sprintf("%s_api.json", dataType))
 
-	url := fmt.Sprintf("%s/api/v2/runs/%s/%s", request.Hostname, request.RunID, apiPath)
+	url := fmt.Sprintf("%s/api/v2/runs/%s/%s", hostname, request.RunID, apiPath)
 	req, err := http.NewRequest("GET", url, nil)
 	if err != nil {
 		return fmt.Errorf("failed to get %s request: %w", dataType, err)
 	}
 
-	req.Header.Set("Authorization", "Bearer "+request.PermissiveAccessToken)
+	req.Header.Set("Authorization", "Bearer "+token)
 	req.Header.Set("Content-Type", api.JsonApiMediaTypeHeader)
 
 	resp, err := http.DefaultClient.Do(req)
@@ -382,4 +384,20 @@ func sendGenericHttpRequest(url string, method string, accessToken string, body 
 	req.Header.Set("Content-Type", api.JsonApiMediaTypeHeader)
 	req.Header.Set("Authorization", "Bearer "+accessToken)
 	return http.DefaultClient.Do(req)
+}
+
+// get a permissive token from the environment variable, empty if not set
+func getPermissiveToken() string {
+	return os.Getenv("PERMISSIVE_ACCESS_TOKEN")
+}
+
+// get the hostname from the task request callback URL
+func getHostname(request api.Request) string {
+	// Extract hostname from the TaskResultCallbackURL
+	// e.g., "https://app.terraform.io/api/v2/task-results/..." -> "https://app.terraform.io"
+	hostname := ""
+	if idx := strings.Index(request.TaskResultCallbackURL, "/api/"); idx != -1 {
+		hostname = request.TaskResultCallbackURL[:idx]
+	}
+	return hostname
 }

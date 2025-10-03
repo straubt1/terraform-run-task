@@ -52,7 +52,7 @@ func (r *ScaffoldingRunTask) PrePlanStage(request api.Request) (*handler.Callbac
 		return handler.NewCallbackBuilder(api.TaskFailed).WithMessage("Failed to save request to file: " + err.Error()), err
 	}
 
-	err = getRunFromAPI(runTaskPath, request)
+	err = getDataFromAPI(runTaskPath, "run", request)
 	if err != nil {
 		return handler.NewCallbackBuilder(api.TaskFailed).WithMessage("Failed to download run from API: " + err.Error()), err
 	}
@@ -85,7 +85,7 @@ func (r *ScaffoldingRunTask) PostPlanStage(request api.Request) (*handler.Callba
 		return handler.NewCallbackBuilder(api.TaskFailed).WithMessage("Failed to save request to file: " + err.Error()), err
 	}
 
-	err = getRunFromAPI(runTaskPath, request)
+	err = getDataFromAPI(runTaskPath, "run", request)
 	if err != nil {
 		return handler.NewCallbackBuilder(api.TaskFailed).WithMessage("Failed to download run from API: " + err.Error()), err
 	}
@@ -97,7 +97,7 @@ func (r *ScaffoldingRunTask) PostPlanStage(request api.Request) (*handler.Callba
 	}
 
 	// Get the Plan from API
-	err = getPlanFromAPI(runTaskPath, request)
+	err = getDataFromAPI(runTaskPath, "plan", request)
 	if err != nil {
 		return handler.NewCallbackBuilder(api.TaskFailed).WithMessage("Failed to download plan file: " + err.Error()), err
 	}
@@ -126,9 +126,34 @@ func (r *ScaffoldingRunTask) PreApplyStage(request api.Request) (*handler.Callba
 		return handler.NewCallbackBuilder(api.TaskFailed).WithMessage("Failed to save request to file: " + err.Error()), err
 	}
 
-	err = getRunFromAPI(runTaskPath, request)
+	// Get the Run data from API
+	err = getDataFromAPI(runTaskPath, "run", request)
 	if err != nil {
 		return handler.NewCallbackBuilder(api.TaskFailed).WithMessage("Failed to download run from API: " + err.Error()), err
+	}
+
+	// Get the Policy Checks from API
+	err = getDataFromAPI(runTaskPath, "policy-checks", request)
+	if err != nil {
+		return handler.NewCallbackBuilder(api.TaskFailed).WithMessage("Failed to download policy checks from API: " + err.Error()), err
+	}
+
+	// Get the Comments from API
+	err = getDataFromAPI(runTaskPath, "comments", request)
+	if err != nil {
+		return handler.NewCallbackBuilder(api.TaskFailed).WithMessage("Failed to download comments from API: " + err.Error()), err
+	}
+
+	// Get the Task Stages from API
+	err = getDataFromAPI(runTaskPath, "task-stages", request)
+	if err != nil {
+		return handler.NewCallbackBuilder(api.TaskFailed).WithMessage("Failed to download task stages from API: " + err.Error()), err
+	}
+
+	// Get the Run Events from API
+	err = getDataFromAPI(runTaskPath, "run-events", request)
+	if err != nil {
+		return handler.NewCallbackBuilder(api.TaskFailed).WithMessage("Failed to download run events from API: " + err.Error()), err
 	}
 
 	return handler.NewCallbackBuilder(api.TaskPassed).WithMessage("Pre-Apply Stage Passed"), nil
@@ -149,12 +174,14 @@ func (r *ScaffoldingRunTask) PostApplyStage(request api.Request) (*handler.Callb
 		return handler.NewCallbackBuilder(api.TaskFailed).WithMessage("Failed to save request to file: " + err.Error()), err
 	}
 
-	err = getRunFromAPI(runTaskPath, request)
+	// Get the Run data from API
+	err = getDataFromAPI(runTaskPath, "run", request)
 	if err != nil {
 		return handler.NewCallbackBuilder(api.TaskFailed).WithMessage("Failed to download run from API: " + err.Error()), err
 	}
 
-	err = getApplyFromAPI(runTaskPath, request)
+	// Get the Apply data from API
+	err = getDataFromAPI(runTaskPath, "apply", request)
 	if err != nil {
 		return handler.NewCallbackBuilder(api.TaskFailed).WithMessage("Failed to download apply from API: " + err.Error()), err
 	}
@@ -165,12 +192,50 @@ func (r *ScaffoldingRunTask) PostApplyStage(request api.Request) (*handler.Callb
 		return handler.NewCallbackBuilder(api.TaskFailed).WithMessage("Failed to get apply logs: " + err.Error()), err
 	}
 
+	// Get the Policy Checks from API
+	err = getDataFromAPI(runTaskPath, "policy-checks", request)
+	if err != nil {
+		return handler.NewCallbackBuilder(api.TaskFailed).WithMessage("Failed to download policy checks from API: " + err.Error()), err
+	}
+
+	// Get the Comments from API
+	err = getDataFromAPI(runTaskPath, "comments", request)
+	if err != nil {
+		return handler.NewCallbackBuilder(api.TaskFailed).WithMessage("Failed to download comments from API: " + err.Error()), err
+	}
+
+	// Get the Task Stages from API
+	err = getDataFromAPI(runTaskPath, "task-stages", request)
+	if err != nil {
+		return handler.NewCallbackBuilder(api.TaskFailed).WithMessage("Failed to download task stages from API: " + err.Error()), err
+	}
+
+	// Get the Run Events from API
+	err = getDataFromAPI(runTaskPath, "run-events", request)
+	if err != nil {
+		return handler.NewCallbackBuilder(api.TaskFailed).WithMessage("Failed to download run events from API: " + err.Error()), err
+	}
+
 	return handler.NewCallbackBuilder(api.TaskPassed).WithMessage("Post-Apply Stage Passed"), nil
 }
 
 // Create the directory structure for the run task based on workspace, run ID, and stage
 func createRunTaskDirectoryStructure(request api.Request, stage string) (string, error) {
-	path := filepath.Join(".", request.WorkspaceName, request.RunID, stage)
+	// Prefix the stage folder with a number to make it easier to read
+	var stageFolder string
+	switch stage {
+	case api.PrePlan:
+		stageFolder = "1_" + stage
+	case api.PostPlan:
+		stageFolder = "2_" + stage
+	case api.PreApply:
+		stageFolder = "3_" + stage
+	case api.PostApply:
+		stageFolder = "4_" + stage
+	default:
+		stageFolder = stage
+	}
+	path := filepath.Join(".", request.WorkspaceName, request.RunID, stageFolder)
 	err := os.MkdirAll(path, os.ModePerm)
 	return path, err
 }

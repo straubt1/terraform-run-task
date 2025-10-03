@@ -70,6 +70,7 @@ func handleTFCRequestWrapper(task *ScaffoldingRunTask, original func(http.Respon
 			http.Error(w, "Bad Request", http.StatusBadRequest)
 			return
 		}
+
 		// Extract hostname from the TaskResultCallbackURL
 		// e.g., "https://app.terraform.io/api/v2/task-results/..." -> "https://app.terraform.io"
 		hostname := ""
@@ -79,6 +80,9 @@ func handleTFCRequestWrapper(task *ScaffoldingRunTask, original func(http.Respon
 			task.logger.Println("Error extracting hostname from TaskResultCallbackURL")
 		}
 		runTaskReq.Hostname = hostname
+
+		// Get a permissive token from the environment variable, empty if not set
+		runTaskReq.PermissiveAccessToken = os.Getenv("TFE_API_TOKEN")
 
 		task.logger.Println("Run Task Stage:", runTaskReq.Stage, "for workspace:", runTaskReq.WorkspaceName, "and run ID:", runTaskReq.RunID)
 
@@ -173,57 +177,4 @@ func sendTFCCallbackResponse() func(w http.ResponseWriter, r *http.Request, reqB
 
 		task.logger.Println("Sent run task response to TFC")
 	}
-}
-
-// func retrieveTFCPlan(req api.Request) (tfjson.Plan, error) {
-
-// 	// Call TFC to get plan
-// 	resp, err := sendGenericHttpRequest(req.PlanJSONAPIURL, "GET", req.AccessToken, nil)
-// 	if err != nil {
-// 		return tfjson.Plan{}, err
-// 	}
-
-// 	var tfPlan tfjson.Plan
-
-// 	if resp == nil {
-// 		return tfPlan, fmt.Errorf("expected Terraform plan from TFC but received none")
-// 	}
-
-// 	respBody, err := io.ReadAll(resp.Body)
-
-// 	_ = resp.Body.Close()
-
-// 	if err != nil {
-// 		return tfPlan, err
-// 	}
-
-// 	err = json.Unmarshal(respBody, &tfPlan)
-
-// 	if err != nil {
-// 		return tfPlan, err
-// 	}
-
-// 	return tfPlan, nil
-// }
-
-// // sends a generic HTTP request to TFC with the required headers
-// func sendTFCRequest(url string, method string, accessToken string, body []byte) (*http.Response, error) {
-// 	req, err := http.NewRequest(method, url, bytes.NewReader(body))
-// 	if err != nil {
-// 		fmt.Printf("client: could not create request: %s\n", err)
-// 		os.Exit(1)
-// 	}
-
-// 	// Required headers to send to TFC
-// 	req.Header.Set("Content-Type", api.JsonApiMediaTypeHeader)
-// 	req.Header.Set("Authorization", "Bearer "+accessToken)
-// 	return http.DefaultClient.Do(req)
-// }
-
-// Get an access token with more permissions than the one provided in the request
-// This token needs the following permissions:
-//   - workspace:read
-func getPermissiveToken() string {
-	token := os.Getenv("TFE_API_TOKEN")
-	return token
 }

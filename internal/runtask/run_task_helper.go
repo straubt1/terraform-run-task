@@ -10,7 +10,6 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
-	"strings"
 
 	"github.com/straubt1/terraform-run-task/internal/sdk/api"
 )
@@ -143,61 +142,6 @@ func extractTarGz(archiveFile, targetDir, id string) error {
 	return nil
 }
 
-// Get the run from the API and save it to a file
-func getRunFromAPI(outputDirectory string, request api.Request) error {
-	filePath := filepath.Join(outputDirectory, "run_api.json")
-	token := getPermissiveToken()
-	// if no token, skip this step
-	// TODO: better logging
-	if token == "" {
-		return nil
-	}
-
-	url := fmt.Sprintf("%s/api/v2/runs/%s", request.Hostname, request.RunID)
-	req, err := http.NewRequest("GET", url, nil)
-	if err != nil {
-		return fmt.Errorf("failed to create request: %w", err)
-	}
-
-	req.Header.Set("Authorization", "Bearer "+token)
-	req.Header.Set("Content-Type", api.JsonApiMediaTypeHeader)
-
-	resp, err := http.DefaultClient.Do(req)
-	if err != nil {
-		return fmt.Errorf("failed to download plan file: %w", err)
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode != http.StatusOK {
-		return fmt.Errorf("unexpected status code: %d", resp.StatusCode)
-	}
-
-	// Read the response body
-	body, err := io.ReadAll(resp.Body)
-	if err != nil {
-		return fmt.Errorf("failed to read response body: %w", err)
-	}
-
-	// Unmarshal and marshal with indentation for pretty JSON
-	var prettyJSON bytes.Buffer
-	if err := json.Indent(&prettyJSON, body, "", "  "); err != nil {
-		return fmt.Errorf("failed to pretty print JSON: %w", err)
-	}
-
-	out, err := os.Create(filePath)
-	if err != nil {
-		return fmt.Errorf("failed to create file: %w", err)
-	}
-	defer out.Close()
-
-	_, err = out.Write(prettyJSON.Bytes())
-	if err != nil {
-		return fmt.Errorf("failed to write file: %w", err)
-	}
-
-	return nil
-}
-
 // Download Plan as a JSON file
 func downloadPlanJson(outputDirectory string, request api.Request) error {
 	filePath := filepath.Join(outputDirectory, "plan_json.json")
@@ -206,63 +150,6 @@ func downloadPlanJson(outputDirectory string, request api.Request) error {
 		return fmt.Errorf("failed to create request: %w", err)
 	}
 	req.Header.Set("Authorization", "Bearer "+request.AccessToken)
-	req.Header.Set("Content-Type", api.JsonApiMediaTypeHeader)
-
-	resp, err := http.DefaultClient.Do(req)
-	if err != nil {
-		return fmt.Errorf("failed to download plan file: %w", err)
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode != http.StatusOK {
-		return fmt.Errorf("unexpected status code: %d", resp.StatusCode)
-	}
-
-	// Read the response body
-	body, err := io.ReadAll(resp.Body)
-	if err != nil {
-		return fmt.Errorf("failed to read response body: %w", err)
-	}
-
-	// Unmarshal and marshal with indentation for pretty JSON
-	var prettyJSON bytes.Buffer
-	if err := json.Indent(&prettyJSON, body, "", "  "); err != nil {
-		return fmt.Errorf("failed to pretty print JSON: %w", err)
-	}
-
-	out, err := os.Create(filePath)
-	if err != nil {
-		return fmt.Errorf("failed to create file: %w", err)
-	}
-	defer out.Close()
-
-	_, err = out.Write(prettyJSON.Bytes())
-	if err != nil {
-		return fmt.Errorf("failed to write file: %w", err)
-	}
-
-	return nil
-}
-
-// Get the plan from the API and save it to a file
-func getPlanFromAPI(outputDirectory string, request api.Request) error {
-	filePath := filepath.Join(outputDirectory, "plan_api.json")
-	token := getPermissiveToken()
-	// if no token, skip this step
-	// TODO: better logging
-	if token == "" {
-		return nil
-	}
-
-	// Remove the /json-output suffix to get the GET URL for the plan
-	// url = https://app.terraform.io/api/v2/plans/plan-xxxxxxxxxxxxxxxxx
-	url := strings.TrimSuffix(request.PlanJSONAPIURL, "/json-output")
-	req, err := http.NewRequest("GET", url, nil)
-	if err != nil {
-		return fmt.Errorf("failed to create request: %w", err)
-	}
-
-	req.Header.Set("Authorization", "Bearer "+token)
 	req.Header.Set("Content-Type", api.JsonApiMediaTypeHeader)
 
 	resp, err := http.DefaultClient.Do(req)
@@ -364,22 +251,25 @@ func getPlanLogs(outputDirectory string, request api.Request) error {
 
 }
 
-// Get the apply from the API and save it to a file
-func getApplyFromAPI(outputDirectory string, request api.Request) error {
-	filePath := filepath.Join(outputDirectory, "apply_api.json")
-	token := getPermissiveToken()
-	// if no token, skip this step
-	// TODO: better logging
-	if token == "" {
+// Get data (run, plan, apply) from the API and save it to files
+func getDataFromAPI(outputDirectory string, dataType string, request api.Request) error {
+	if request.PermissiveAccessToken == "" {
+		// If no token, skip this step
 		return nil
 	}
-	url := fmt.Sprintf("%s/api/v2/runs/%s/apply", request.Hostname, request.RunID)
+	apiPath := dataType
+	if dataType == "run" { // no sub-path for run
+		apiPath = ""
+	}
+	filePath := filepath.Join(outputDirectory, fmt.Sprintf("%s_api.json", dataType))
+
+	url := fmt.Sprintf("%s/api/v2/runs/%s/%s", request.Hostname, request.RunID, apiPath)
 	req, err := http.NewRequest("GET", url, nil)
 	if err != nil {
-		return fmt.Errorf("failed to create request: %w", err)
+		return fmt.Errorf("failed to get %s request: %w", dataType, err)
 	}
 
-	req.Header.Set("Authorization", "Bearer "+token)
+	req.Header.Set("Authorization", "Bearer "+request.PermissiveAccessToken)
 	req.Header.Set("Content-Type", api.JsonApiMediaTypeHeader)
 
 	resp, err := http.DefaultClient.Do(req)

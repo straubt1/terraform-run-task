@@ -9,7 +9,7 @@ This project serves as both a learning tool and a starting point for building yo
 Run tasks are custom HTTP services that HCP Terraform or Terraform Enterprise can call during specific stages of a Terraform run. They enable you to integrate custom validation, compliance checks, notifications, or any other logic into your Terraform workflow.
 
 > [!important]
-> This example focuses on HCP Terraform, but the concepts and code can be adapted for Terraform Enterprise as well.
+> This documentation focuses on HCP Terraform, but the concepts and code can be adapted for Terraform Enterprise as well.
 
 ## Architecture Overview
 
@@ -248,6 +248,11 @@ Once you understand how the run task works, you can:
 The beauty of run tasks is that you have access to the full Terraform context and can make decisions or take actions at the perfect moment in the workflow.
 
 ## Troubleshooting
+
+### Terraform Failures
+
+If the `test/setup` Terraform fails during apply creating the run task, be sure that the webserver and tunnel are running and accessible.
+HCP Terraform will perform a health check on the run task URL when creating the association and if it cannot reach the URL, the creation will fail.
 
 ### Run Task Not Triggered
 

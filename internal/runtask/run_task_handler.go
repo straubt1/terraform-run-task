@@ -10,6 +10,7 @@ import (
 
 	"github.com/gorilla/mux"
 
+	"github.com/straubt1/terraform-run-task/internal/helper"
 	"github.com/straubt1/terraform-run-task/internal/sdk/api"
 	"github.com/straubt1/terraform-run-task/internal/sdk/handler"
 )
@@ -153,7 +154,8 @@ func sendTFCCallbackResponse() func(w http.ResponseWriter, r *http.Request, reqB
 		}
 
 		// Send PATCH callback response to TFC
-		request, err := sendGenericHttpRequest(reqBody.TaskResultCallbackURL, http.MethodPatch, reqBody.AccessToken, respBody)
+		tfcClient := helper.NewClient()
+		request, err := tfcClient.SendGenericHttpRequest(reqBody.TaskResultCallbackURL, http.MethodPatch, reqBody.AccessToken, respBody)
 		if request != nil {
 			_ = r.Body.Close()
 		}

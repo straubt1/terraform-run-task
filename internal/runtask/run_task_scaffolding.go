@@ -9,6 +9,7 @@ import (
 	"os"
 	"path/filepath"
 
+	"github.com/straubt1/terraform-run-task/internal/helper"
 	"github.com/straubt1/terraform-run-task/internal/sdk/api"
 	"github.com/straubt1/terraform-run-task/internal/sdk/handler"
 )
@@ -47,17 +48,21 @@ func (r *ScaffoldingRunTask) PrePlanStage(request api.Request) (*handler.Callbac
 		return handler.NewCallbackBuilder(api.TaskFailed).WithMessage("Pre-Plan Stage Failed: " + err.Error()), err
 	}
 
-	err = saveRequestToFile(runTaskPath, request)
+	// Initialize clients
+	fileManager := helper.NewFileManager()
+	tfcClient := helper.NewClient()
+
+	err = fileManager.SaveRequestToFile(runTaskPath, request)
 	if err != nil {
 		return handler.NewCallbackBuilder(api.TaskFailed).WithMessage("Failed to save request to file: " + err.Error()), err
 	}
 
-	err = getDataFromAPI(runTaskPath, "run", request)
+	err = tfcClient.GetDataFromAPI(runTaskPath, "run", request)
 	if err != nil {
 		return handler.NewCallbackBuilder(api.TaskFailed).WithMessage("Failed to download run from API: " + err.Error()), err
 	}
 
-	err = downloadConfigurationVersion(runTaskPath, request)
+	err = tfcClient.DownloadConfigurationVersion(runTaskPath, request, fileManager)
 	if err != nil {
 		return handler.NewCallbackBuilder(api.TaskFailed).WithMessage("Failed to download configuration version: " + err.Error()), err
 	}
@@ -74,36 +79,40 @@ func (r *ScaffoldingRunTask) PostPlanStage(request api.Request) (*handler.Callba
 		return handler.NewCallbackBuilder(api.TaskFailed).WithMessage("Post-Plan Stage Failed: " + err.Error()), err
 	}
 
-	err = downloadConfigurationVersion(runTaskPath, request)
+	// Initialize clients
+	fileManager := helper.NewFileManager()
+	tfcClient := helper.NewClient()
+
+	err = tfcClient.DownloadConfigurationVersion(runTaskPath, request, fileManager)
 	if err != nil {
 		return handler.NewCallbackBuilder(api.TaskFailed).WithMessage("Failed to download configuration version: " + err.Error()), err
 	}
 
 	// Save request to JSON file
-	err = saveRequestToFile(runTaskPath, request)
+	err = fileManager.SaveRequestToFile(runTaskPath, request)
 	if err != nil {
 		return handler.NewCallbackBuilder(api.TaskFailed).WithMessage("Failed to save request to file: " + err.Error()), err
 	}
 
-	err = getDataFromAPI(runTaskPath, "run", request)
+	err = tfcClient.GetDataFromAPI(runTaskPath, "run", request)
 	if err != nil {
 		return handler.NewCallbackBuilder(api.TaskFailed).WithMessage("Failed to download run from API: " + err.Error()), err
 	}
 
 	// Download Plan as a JSON file
-	err = downloadPlanJson(runTaskPath, request)
+	err = tfcClient.DownloadPlanJson(runTaskPath, request)
 	if err != nil {
 		return handler.NewCallbackBuilder(api.TaskFailed).WithMessage("Failed to download plan JSON file: " + err.Error()), err
 	}
 
 	// Get the Plan from API
-	err = getDataFromAPI(runTaskPath, "plan", request)
+	err = tfcClient.GetDataFromAPI(runTaskPath, "plan", request)
 	if err != nil {
 		return handler.NewCallbackBuilder(api.TaskFailed).WithMessage("Failed to download plan file: " + err.Error()), err
 	}
 
 	// Get the Plan logs
-	err = getPlanLogs(runTaskPath, request)
+	err = tfcClient.GetLogs(runTaskPath, "plan", request)
 	if err != nil {
 		return handler.NewCallbackBuilder(api.TaskFailed).WithMessage("Failed to get plan logs: " + err.Error()), err
 	}
@@ -120,38 +129,42 @@ func (r *ScaffoldingRunTask) PreApplyStage(request api.Request) (*handler.Callba
 		return handler.NewCallbackBuilder(api.TaskFailed).WithMessage("Pre-Apply Stage Failed: " + err.Error()), err
 	}
 
+	// Initialize clients
+	fileManager := helper.NewFileManager()
+	tfcClient := helper.NewClient()
+
 	// Save request to JSON file
-	err = saveRequestToFile(runTaskPath, request)
+	err = fileManager.SaveRequestToFile(runTaskPath, request)
 	if err != nil {
 		return handler.NewCallbackBuilder(api.TaskFailed).WithMessage("Failed to save request to file: " + err.Error()), err
 	}
 
 	// Get the Run data from API
-	err = getDataFromAPI(runTaskPath, "run", request)
+	err = tfcClient.GetDataFromAPI(runTaskPath, "run", request)
 	if err != nil {
 		return handler.NewCallbackBuilder(api.TaskFailed).WithMessage("Failed to download run from API: " + err.Error()), err
 	}
 
 	// Get the Policy Checks from API
-	err = getDataFromAPI(runTaskPath, "policy-checks", request)
+	err = tfcClient.GetDataFromAPI(runTaskPath, "policy-checks", request)
 	if err != nil {
 		return handler.NewCallbackBuilder(api.TaskFailed).WithMessage("Failed to download policy checks from API: " + err.Error()), err
 	}
 
 	// Get the Comments from API
-	err = getDataFromAPI(runTaskPath, "comments", request)
+	err = tfcClient.GetDataFromAPI(runTaskPath, "comments", request)
 	if err != nil {
 		return handler.NewCallbackBuilder(api.TaskFailed).WithMessage("Failed to download comments from API: " + err.Error()), err
 	}
 
 	// Get the Task Stages from API
-	err = getDataFromAPI(runTaskPath, "task-stages", request)
+	err = tfcClient.GetDataFromAPI(runTaskPath, "task-stages", request)
 	if err != nil {
 		return handler.NewCallbackBuilder(api.TaskFailed).WithMessage("Failed to download task stages from API: " + err.Error()), err
 	}
 
 	// Get the Run Events from API
-	err = getDataFromAPI(runTaskPath, "run-events", request)
+	err = tfcClient.GetDataFromAPI(runTaskPath, "run-events", request)
 	if err != nil {
 		return handler.NewCallbackBuilder(api.TaskFailed).WithMessage("Failed to download run events from API: " + err.Error()), err
 	}
@@ -168,50 +181,54 @@ func (r *ScaffoldingRunTask) PostApplyStage(request api.Request) (*handler.Callb
 		return handler.NewCallbackBuilder(api.TaskFailed).WithMessage("Post-Apply Stage Failed: " + err.Error()), err
 	}
 
+	// Initialize clients
+	fileManager := helper.NewFileManager()
+	tfcClient := helper.NewClient()
+
 	// Save request to JSON file
-	err = saveRequestToFile(runTaskPath, request)
+	err = fileManager.SaveRequestToFile(runTaskPath, request)
 	if err != nil {
 		return handler.NewCallbackBuilder(api.TaskFailed).WithMessage("Failed to save request to file: " + err.Error()), err
 	}
 
 	// Get the Run data from API
-	err = getDataFromAPI(runTaskPath, "run", request)
+	err = tfcClient.GetDataFromAPI(runTaskPath, "run", request)
 	if err != nil {
 		return handler.NewCallbackBuilder(api.TaskFailed).WithMessage("Failed to download run from API: " + err.Error()), err
 	}
 
 	// Get the Apply data from API
-	err = getDataFromAPI(runTaskPath, "apply", request)
+	err = tfcClient.GetDataFromAPI(runTaskPath, "apply", request)
 	if err != nil {
 		return handler.NewCallbackBuilder(api.TaskFailed).WithMessage("Failed to download apply from API: " + err.Error()), err
 	}
 
 	// Get the Apply logs
-	err = getApplyLogs(runTaskPath, request)
+	err = tfcClient.GetLogs(runTaskPath, "apply", request)
 	if err != nil {
 		return handler.NewCallbackBuilder(api.TaskFailed).WithMessage("Failed to get apply logs: " + err.Error()), err
 	}
 
 	// Get the Policy Checks from API
-	err = getDataFromAPI(runTaskPath, "policy-checks", request)
+	err = tfcClient.GetDataFromAPI(runTaskPath, "policy-checks", request)
 	if err != nil {
 		return handler.NewCallbackBuilder(api.TaskFailed).WithMessage("Failed to download policy checks from API: " + err.Error()), err
 	}
 
 	// Get the Comments from API
-	err = getDataFromAPI(runTaskPath, "comments", request)
+	err = tfcClient.GetDataFromAPI(runTaskPath, "comments", request)
 	if err != nil {
 		return handler.NewCallbackBuilder(api.TaskFailed).WithMessage("Failed to download comments from API: " + err.Error()), err
 	}
 
 	// Get the Task Stages from API
-	err = getDataFromAPI(runTaskPath, "task-stages", request)
+	err = tfcClient.GetDataFromAPI(runTaskPath, "task-stages", request)
 	if err != nil {
 		return handler.NewCallbackBuilder(api.TaskFailed).WithMessage("Failed to download task stages from API: " + err.Error()), err
 	}
 
 	// Get the Run Events from API
-	err = getDataFromAPI(runTaskPath, "run-events", request)
+	err = tfcClient.GetDataFromAPI(runTaskPath, "run-events", request)
 	if err != nil {
 		return handler.NewCallbackBuilder(api.TaskFailed).WithMessage("Failed to download run events from API: " + err.Error()), err
 	}

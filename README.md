@@ -17,45 +17,35 @@ Run tasks are custom HTTP services that HCP Terraform or Terraform Enterprise ca
 sequenceDiagram
     participant TF as HCP Terraform
     participant RT as Run Task Server
-    participant CF as Cloudflare Tunnel
     participant FS as Local File System
 
     Note over TF,FS: Run Task Lifecycle
     
-    TF->>CF: 1. Pre-Plan Request
-    CF->>RT: Forward Request
-    RT->>TF: Fetch Run Data via API
-    RT->>TF: Download Configuration
+    TF->>RT: 1. Pre-Plan Request
+    RT<<->>TF: Fetch Data via API
     RT->>FS: Save data to bin/{run-id}/1_pre_plan/
-    RT->>CF: Return Success/Failure
-    CF->>TF: Forward Response
+    RT->>TF: Return Success/Failure
     
     Note over TF: Terraform Plan Execution
-    
-    TF->>CF: 2. Post-Plan Request
-    CF->>RT: Forward Request
-    RT->>TF: Fetch Plan Data & Logs
+
+    TF->>RT: 2. Post-Plan Request
+    RT<<->>TF: Fetch Data & Logs
     RT->>FS: Save data to bin/{run-id}/2_post_plan/
-    RT->>CF: Return Success/Failure
-    CF->>TF: Forward Response
+    RT->>TF: Return Success/Failure
     
     Note over TF: User Approval (if required)
-    
-    TF->>CF: 3. Pre-Apply Request
-    CF->>RT: Forward Request
-    RT->>TF: Fetch Policy Checks, Comments, etc.
+
+    TF->>RT: 3. Pre-Apply Request
+    RT<<->>TF: Fetch Data & Logs
     RT->>FS: Save data to bin/{run-id}/3_pre_apply/
-    RT->>CF: Return Success/Failure
-    CF->>TF: Forward Response
-    
+    RT->>TF: Return Success/Failure
+
     Note over TF: Terraform Apply Execution
-    
-    TF->>CF: 4. Post-Apply Request
-    CF->>RT: Forward Request
-    RT->>TF: Fetch Apply Data & Logs
+
+    TF->>RT: 4. Post-Apply Request
+    RT<<->>TF: Fetch Data & Logs
     RT->>FS: Save data to bin/{run-id}/4_post_apply/
-    RT->>CF: Return Success/Failure
-    CF->>TF: Forward Response
+    RT->>TF: Return Success/Failure
 ```
 
 ## Features

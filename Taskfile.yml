@@ -6,47 +6,50 @@ vars:
   TASK_PORT: 22180
   BUILD_FOLDER: bin
   TUNNEL_FOLDER: bin/tunnel
-  PUBLIC_HOSTNAME: "https://pools-counseling-collaboration-extreme.trycloudflare.com"
+  TUNNEL_LOGFILE: "{{.TUNNEL_FOLDER}}/tunnel.log" # cloudflared background process logs output
+  TUNNEL_URLFILE: "{{.TUNNEL_FOLDER}}/tunnel.url" # dynamic URL for the tunnel
 
 tasks:
   build:
     desc: Build the go application
     cmds:
-      - go build -o {{.BUILD_FOLDER}}/
+      - go build -o {{.BUILD_FOLDER}}/terraform-run-task
   run:
     desc: Run the application
     dir: "{{.BUILD_FOLDER}}"
     cmds:
       - "./terraform-run-task -port {{.TASK_PORT}}"
-  tunnel:
-    desc: Start cloudflare tunnel
-    cmds:
-      - cloudflared tunnel --url http://localhost:{{.TASK_PORT}} | tee tunnel.log
 
-  tunnel-kill:
-    cmd: kill -9 $(pgrep -f "cloudflared tunnel")
-  tunnel-with-url:
+
+  tunnel-start:
     desc: Start cloudflare tunnel and extract URL to url.txt
+    silent: true
     cmds:
       - |
-        echo "Starting tunnel and monitoring for URL..."
-        # Start cloudflared in background and capture output
+        # Check if cloudflared tunnel is already running
+        if pgrep -f "cloudflared tunnel" > /dev/null; then
+          echo "Tunnel is already running"
+          exit 0
+        fi
+        # Create directory if not exists
         mkdir -p {{.TUNNEL_FOLDER}}
-        cloudflared tunnel --url http://localhost:{{.TASK_PORT}} 2>&1 | tee {{.TUNNEL_FOLDER}}/tunnel.log &
+        # Remove existing files if they exist
+        rm -f {{.TUNNEL_LOGFILE}} {{.TUNNEL_URLFILE}}
+
+        echo "Starting tunnel, logs found: {{.TUNNEL_LOGFILE}}"
+        cloudflared tunnel --url http://localhost:{{.TASK_PORT}} > {{.TUNNEL_LOGFILE}} 2>&1 &
+        # cloudflared tunnel --url http://localhost:{{.TASK_PORT}} 2>&1 | tee {{.TUNNEL_LOGFILE}} &
         
         # Monitor the log file for URL pattern
-        echo "Monitoring tunnel output for URL..."
         timeout=10  # seconds
-        counter=0
-        
+        counter=0        
         while [ $counter -lt $timeout ]; do
-          if [ -f {{.TUNNEL_FOLDER}}/tunnel.log ]; then
+          if [ -f {{.TUNNEL_LOGFILE}} ]; then
             # Look for URL pattern in the log
-            URL=$(grep -oE 'https://[a-zA-Z0-9-]+\.trycloudflare\.com' {{.TUNNEL_FOLDER}}/tunnel.log | tail -1)
+            URL=$(grep -oE 'https://[a-zA-Z0-9-]+\.trycloudflare\.com' {{.TUNNEL_LOGFILE}} | tail -1)
             if [ ! -z "$URL" ]; then
+              echo "$URL" > {{.TUNNEL_URLFILE}}
               echo "Found tunnel URL: $URL"
-              echo "$URL" > {{.TUNNEL_FOLDER}}/url.txt
-              echo "URL written to url.txt"
               break
             fi
           fi
@@ -54,13 +57,12 @@ tasks:
           counter=$((counter + 1))
         done
         
-        # if [ $counter -eq $timeout ]; then
-        #   echo "Timeout: No URL found in $timeout seconds"
-        #   exit 1
-        # fi
-        
-        echo "Tunnel is running..."
-  
+        echo "Tunnel is running in the background..."
+  tunnel-stop:
+    cmds: 
+      - |
+        echo "Kill any running processes with 'cloudflared tunnel'"
+        kill -9 $(pgrep -f "cloudflared tunnel")
   healthcheck:
     desc: Check health using dynamic tunnel URL from url.txt
     cmds:

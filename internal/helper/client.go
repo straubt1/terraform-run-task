@@ -26,7 +26,7 @@ func NewClient() *Client {
 }
 
 // DownloadConfigurationVersion downloads and extracts a configuration version
-func (c *Client) DownloadConfigurationVersion(outputDirectory string, request api.Request, extractor ArchiveExtractor) error {
+func (c *Client) DownloadConfigurationVersion(outputDirectory string, request api.TaskRequest, extractor ArchiveExtractor) error {
 	cvFolder := filepath.Join(outputDirectory, request.ConfigurationVersionID)
 	cvFile := filepath.Join(outputDirectory, request.ConfigurationVersionID+".tar.gz")
 
@@ -44,7 +44,7 @@ func (c *Client) DownloadConfigurationVersion(outputDirectory string, request ap
 }
 
 // DownloadPlanJson downloads the plan as a JSON file
-func (c *Client) DownloadPlanJson(outputDirectory string, request api.Request) error {
+func (c *Client) DownloadPlanJson(outputDirectory string, request api.TaskRequest) error {
 	filePath := filepath.Join(outputDirectory, "plan_json.json")
 
 	body, err := c.makeAPIRequest("GET", request.PlanJSONAPIURL, request.AccessToken, nil)
@@ -56,7 +56,7 @@ func (c *Client) DownloadPlanJson(outputDirectory string, request api.Request) e
 }
 
 // GetDataFromAPI retrieves data from the TFC API and saves it to a file
-func (c *Client) GetDataFromAPI(outputDirectory string, dataType string, request api.Request) error {
+func (c *Client) GetDataFromAPI(outputDirectory string, dataType string, request api.TaskRequest) error {
 	token := c.GetPermissiveToken()
 	if token == "" {
 		return nil // If no token, skip this step
@@ -80,7 +80,7 @@ func (c *Client) GetDataFromAPI(outputDirectory string, dataType string, request
 }
 
 // GetLogs retrieves logs from the API based on the API response file
-func (c *Client) GetLogs(outputDirectory, logType string, request api.Request) error {
+func (c *Client) GetLogs(outputDirectory, logType string, request api.TaskRequest) error {
 	apiFileName := fmt.Sprintf("%s_api.json", logType)
 	logFileName := fmt.Sprintf("%s_logs.txt", logType)
 
@@ -99,7 +99,7 @@ func (c *Client) GetPermissiveToken() string {
 }
 
 // GetHostname extracts the hostname from the task request callback URL
-func (c *Client) GetHostname(request api.Request) string {
+func (c *Client) GetHostname(request api.TaskRequest) string {
 	// Extract hostname from the TaskResultCallbackURL
 	// e.g., "https://app.terraform.io/api/v2/task-results/..." -> "https://app.terraform.io"
 	if idx := strings.Index(request.TaskResultCallbackURL, "/api/"); idx != -1 {

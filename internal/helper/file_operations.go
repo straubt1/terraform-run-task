@@ -9,8 +9,6 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
-
-	"github.com/straubt1/terraform-run-task/internal/sdk/api"
 )
 
 const (
@@ -26,9 +24,9 @@ func NewFileManager() *FileManager {
 	return &FileManager{}
 }
 
-// SaveRequestToFile saves the run task request (JSON) to a file
-func (fm *FileManager) SaveRequestToFile(outputDirectory string, request api.Request) error {
-	filePath := filepath.Join(outputDirectory, "request.json")
+// SaveStructToFile saves the any struct to a file as JSON
+func (fm *FileManager) SaveStructToFile(outputDirectory string, filename string, s interface{}) error {
+	filePath := filepath.Join(outputDirectory, filename)
 	file, err := os.Create(filePath)
 	if err != nil {
 		return fmt.Errorf("failed to create file %s: %w", filePath, err)
@@ -37,8 +35,8 @@ func (fm *FileManager) SaveRequestToFile(outputDirectory string, request api.Req
 
 	encoder := json.NewEncoder(file)
 	encoder.SetIndent("", "  ")
-	if err := encoder.Encode(request); err != nil {
-		return fmt.Errorf("failed to encode request to JSON: %w", err)
+	if err := encoder.Encode(s); err != nil {
+		return fmt.Errorf("failed to encode struct to JSON: %w", err)
 	}
 	return nil
 }

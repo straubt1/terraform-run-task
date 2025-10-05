@@ -7,7 +7,6 @@ import (
 	"fmt"
 	"log"
 	"os"
-	"path/filepath"
 
 	"github.com/straubt1/terraform-run-task/internal/helper"
 	"github.com/straubt1/terraform-run-task/internal/sdk/api"
@@ -40,9 +39,11 @@ func (r *ScaffoldingRunTask) Configure(addr string, path string, hmacKey string)
 // Below are the 4 potential stages of a run task
 
 // PrePlanStage is executed before the plan is created.
-func (r *ScaffoldingRunTask) PrePlanStage(request api.Request) (*handler.CallbackBuilder, error) {
+func (r *ScaffoldingRunTask) PrePlanStage(request api.TaskRequest) (*handler.CallbackBuilder, error) {
 	r.logger.Println("Running Pre-Plan Stage")
-	runTaskPath, err := createRunTaskDirectoryStructure(request, api.PrePlan)
+	request.CreateRunTaskDirectoryStructure()
+	runTaskPath, err := request.CreateRunTaskDirectoryStructure()
+	// runTaskPath, err := createRunTaskDirectoryStructure(request, api.PrePlan)
 	if err != nil {
 		r.logger.Println("Error creating directory:", err)
 		return handler.NewCallbackBuilder(api.TaskFailed).WithMessage("Pre-Plan Stage Failed: " + err.Error()), err
@@ -52,7 +53,7 @@ func (r *ScaffoldingRunTask) PrePlanStage(request api.Request) (*handler.Callbac
 	fileManager := helper.NewFileManager()
 	tfcClient := helper.NewClient()
 
-	err = fileManager.SaveRequestToFile(runTaskPath, request)
+	err = fileManager.SaveStructToFile(runTaskPath, "request.json", request)
 	if err != nil {
 		return handler.NewCallbackBuilder(api.TaskFailed).WithMessage("Failed to save request to file: " + err.Error()), err
 	}
@@ -67,13 +68,18 @@ func (r *ScaffoldingRunTask) PrePlanStage(request api.Request) (*handler.Callbac
 		return handler.NewCallbackBuilder(api.TaskFailed).WithMessage("Failed to download configuration version: " + err.Error()), err
 	}
 
-	return handler.NewCallbackBuilder(api.TaskPassed).WithMessage("Pre-Plan Stage Passed"), nil
+	return handler.NewCallbackBuilder(api.TaskPassed).
+			WithMessage("Pre-Plan Stage Passed").
+			WithUrl("https://developer.hashicorp.com/terraform").
+			WithRelationships(),
+		nil
 }
 
 // PostPlanStage is executed after the plan is created.
-func (r *ScaffoldingRunTask) PostPlanStage(request api.Request) (*handler.CallbackBuilder, error) {
+func (r *ScaffoldingRunTask) PostPlanStage(request api.TaskRequest) (*handler.CallbackBuilder, error) {
 	r.logger.Println("Running Post-Plan Stage")
-	runTaskPath, err := createRunTaskDirectoryStructure(request, api.PostPlan)
+	runTaskPath, err := request.CreateRunTaskDirectoryStructure()
+	// runTaskPath, err := createRunTaskDirectoryStructure(request, api.PostPlan)
 	if err != nil {
 		r.logger.Println("Error creating directory:", err)
 		return handler.NewCallbackBuilder(api.TaskFailed).WithMessage("Post-Plan Stage Failed: " + err.Error()), err
@@ -89,7 +95,7 @@ func (r *ScaffoldingRunTask) PostPlanStage(request api.Request) (*handler.Callba
 	}
 
 	// Save request to JSON file
-	err = fileManager.SaveRequestToFile(runTaskPath, request)
+	err = fileManager.SaveStructToFile(runTaskPath, "request.json", request)
 	if err != nil {
 		return handler.NewCallbackBuilder(api.TaskFailed).WithMessage("Failed to save request to file: " + err.Error()), err
 	}
@@ -121,9 +127,10 @@ func (r *ScaffoldingRunTask) PostPlanStage(request api.Request) (*handler.Callba
 }
 
 // PreApplyStage is executed before the apply is executed.
-func (r *ScaffoldingRunTask) PreApplyStage(request api.Request) (*handler.CallbackBuilder, error) {
+func (r *ScaffoldingRunTask) PreApplyStage(request api.TaskRequest) (*handler.CallbackBuilder, error) {
 	r.logger.Println("Running Pre-Apply Stage")
-	runTaskPath, err := createRunTaskDirectoryStructure(request, api.PreApply)
+	runTaskPath, err := request.CreateRunTaskDirectoryStructure()
+	// runTaskPath, err := createRunTaskDirectoryStructure(request, api.PreApply)
 	if err != nil {
 		r.logger.Println("Error creating directory:", err)
 		return handler.NewCallbackBuilder(api.TaskFailed).WithMessage("Pre-Apply Stage Failed: " + err.Error()), err
@@ -134,7 +141,7 @@ func (r *ScaffoldingRunTask) PreApplyStage(request api.Request) (*handler.Callba
 	tfcClient := helper.NewClient()
 
 	// Save request to JSON file
-	err = fileManager.SaveRequestToFile(runTaskPath, request)
+	err = fileManager.SaveStructToFile(runTaskPath, "request.json", request)
 	if err != nil {
 		return handler.NewCallbackBuilder(api.TaskFailed).WithMessage("Failed to save request to file: " + err.Error()), err
 	}
@@ -173,9 +180,10 @@ func (r *ScaffoldingRunTask) PreApplyStage(request api.Request) (*handler.Callba
 }
 
 // PostApplyStage is executed after the apply is executed.
-func (r *ScaffoldingRunTask) PostApplyStage(request api.Request) (*handler.CallbackBuilder, error) {
+func (r *ScaffoldingRunTask) PostApplyStage(request api.TaskRequest) (*handler.CallbackBuilder, error) {
 	r.logger.Println("Running Post-Apply Stage")
-	runTaskPath, err := createRunTaskDirectoryStructure(request, api.PostApply)
+	runTaskPath, err := request.CreateRunTaskDirectoryStructure()
+	// runTaskPath, err := createRunTaskDirectoryStructure(request, api.PostApply)
 	if err != nil {
 		r.logger.Println("Error creating directory:", err)
 		return handler.NewCallbackBuilder(api.TaskFailed).WithMessage("Post-Apply Stage Failed: " + err.Error()), err
@@ -186,7 +194,7 @@ func (r *ScaffoldingRunTask) PostApplyStage(request api.Request) (*handler.Callb
 	tfcClient := helper.NewClient()
 
 	// Save request to JSON file
-	err = fileManager.SaveRequestToFile(runTaskPath, request)
+	err = fileManager.SaveStructToFile(runTaskPath, "request.json", request)
 	if err != nil {
 		return handler.NewCallbackBuilder(api.TaskFailed).WithMessage("Failed to save request to file: " + err.Error()), err
 	}
@@ -236,23 +244,23 @@ func (r *ScaffoldingRunTask) PostApplyStage(request api.Request) (*handler.Callb
 	return handler.NewCallbackBuilder(api.TaskPassed).WithMessage("Post-Apply Stage Passed"), nil
 }
 
-// Create the directory structure for the run task based on workspace, run ID, and stage
-func createRunTaskDirectoryStructure(request api.Request, stage string) (string, error) {
-	// Prefix the stage folder with a number to make it easier to read
-	var stageFolder string
-	switch stage {
-	case api.PrePlan:
-		stageFolder = "1_" + stage
-	case api.PostPlan:
-		stageFolder = "2_" + stage
-	case api.PreApply:
-		stageFolder = "3_" + stage
-	case api.PostApply:
-		stageFolder = "4_" + stage
-	default:
-		stageFolder = stage
-	}
-	path := filepath.Join(".", request.WorkspaceName, request.RunID, stageFolder)
-	err := os.MkdirAll(path, os.ModePerm)
-	return path, err
-}
+// // Create the directory structure for the run task based on workspace, run ID, and stage
+// func createRunTaskDirectoryStructure(request api.TaskRequest, stage string) (string, error) {
+// 	// Prefix the stage folder with a number to make it easier to read
+// 	var stageFolder string
+// 	switch stage {
+// 	case api.PrePlan:
+// 		stageFolder = "1_" + stage
+// 	case api.PostPlan:
+// 		stageFolder = "2_" + stage
+// 	case api.PreApply:
+// 		stageFolder = "3_" + stage
+// 	case api.PostApply:
+// 		stageFolder = "4_" + stage
+// 	default:
+// 		stageFolder = stage
+// 	}
+// 	path := filepath.Join(".", request.WorkspaceName, request.RunID, stageFolder)
+// 	err := os.MkdirAll(path, os.ModePerm)
+// 	return path, err
+// }

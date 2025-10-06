@@ -51,7 +51,7 @@ func healthcheck(task *ScaffoldingRunTask) func(w http.ResponseWriter, r *http.R
 
 // This is the entry point for a Run Task request from HCP Terraform.
 // It validates the request, determines the stage, and calls the appropriate stage function.
-func handleTFCRequestWrapper(task *ScaffoldingRunTask, callback func(http.ResponseWriter, *http.Request, api.TaskRequest, *ScaffoldingRunTask, *handler.CallbackBuilder)) func(http.ResponseWriter, *http.Request) {
+func handleTFCRequestWrapper(task *ScaffoldingRunTask, callback func(http.ResponseWriter, *http.Request, api.TaskRequest, *ScaffoldingRunTask, *api.TaskResponse)) func(http.ResponseWriter, *http.Request) {
 	return func(w http.ResponseWriter, r *http.Request) {
 		task.logger.Println(task.config.Path + " called")
 
@@ -116,7 +116,8 @@ func handleTFCRequestWrapper(task *ScaffoldingRunTask, callback func(http.Respon
 		}
 
 		// Call the appropriate stage function based on the stage in the request
-		var stageResponse *handler.CallbackBuilder
+		// var stageResponse *handler.CallbackBuilder
+		var stageResponse *api.TaskResponse
 		var stageError error
 		if runTaskReq.Stage == api.PrePlan {
 			stageResponse, stageError = task.PrePlanStage(runTaskReq)
@@ -127,15 +128,17 @@ func handleTFCRequestWrapper(task *ScaffoldingRunTask, callback func(http.Respon
 		} else if runTaskReq.Stage == api.PostApply {
 			stageResponse, stageError = task.PostApplyStage(runTaskReq)
 		} else {
+			stageResponse = api.NewTaskResponse().SetResult(api.TaskFailed, "Run Task is running in an unknown stage: "+string(runTaskReq.Stage))
+
 			task.logger.Println("Run task is running in an unknown stage:", runTaskReq.Stage)
-			http.Error(w, "Bad Request: unknown stage "+string(runTaskReq.Stage), http.StatusBadRequest)
-			return
+			// http.Error(w, "Bad Request: unknown stage "+string(runTaskReq.Stage), http.StatusBadRequest)
 		}
 
 		if stageError != nil {
+			stageResponse = api.NewTaskResponse().SetResult(api.TaskFailed, "Run Task had an unexpected error: "+stageError.Error())
+
 			task.logger.Println("Error occurred during stage execution:", stageError.Error())
-			http.Error(w, "Error during stage execution:"+stageError.Error(), http.StatusInternalServerError)
-			return
+			// http.Error(w, "Error during stage execution:"+stageError.Error(), http.StatusInternalServerError)
 		}
 
 		// Call the original function to send the response back to TFC with the stage result
@@ -144,9 +147,10 @@ func handleTFCRequestWrapper(task *ScaffoldingRunTask, callback func(http.Respon
 }
 
 // Function to reply back to HCP Terraform with the task result for the Stage.
-func sendTFCCallbackResponse() func(w http.ResponseWriter, r *http.Request, reqBody api.TaskRequest, task *ScaffoldingRunTask, cbBuilder *handler.CallbackBuilder) {
-	return func(w http.ResponseWriter, r *http.Request, reqBody api.TaskRequest, task *ScaffoldingRunTask, cbBuilder *handler.CallbackBuilder) {
-		respBody, err := cbBuilder.MarshallJSON()
+func sendTFCCallbackResponse() func(w http.ResponseWriter, r *http.Request, reqBody api.TaskRequest, task *ScaffoldingRunTask, cbBuilder *api.TaskResponse) {
+	return func(w http.ResponseWriter, r *http.Request, reqBody api.TaskRequest, task *ScaffoldingRunTask, cbBuilder *api.TaskResponse) {
+		respBody, err := json.Marshal(cbBuilder)
+		// respBody, err := cbBuilder.MarshallJSON()
 		if err != nil {
 			task.logger.Println("Unable to marshall callback response to TFC")
 			http.Error(w, "Bad Request", http.StatusBadRequest)
@@ -157,7 +161,8 @@ func sendTFCCallbackResponse() func(w http.ResponseWriter, r *http.Request, reqB
 		// This is fairly ugly at the moment, but it works.
 		fileManager := helper.NewFileManager()
 		reqBody.CreateRunTaskDirectoryStructure()
-		err = fileManager.SaveStructToFile(reqBody.TaskDirectory, "response.json", cbBuilder.GetResponse())
+		err = fileManager.SaveStructToFile(reqBody.TaskDirectory, "response.json", cbBuilder)
+		// err = fileManager.SaveStructToFile(reqBody.TaskDirectory, "response.json", cbBuilder.GetResponse())
 		if err != nil {
 			task.logger.Printf("Warning: Failed to save response to file: %v", err)
 		}

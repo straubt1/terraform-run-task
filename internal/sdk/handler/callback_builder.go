@@ -5,32 +5,30 @@ package handler
 
 import (
 	"encoding/json"
+	"strings"
 
 	"github.com/straubt1/terraform-run-task/internal/sdk/api"
 )
 
-// TypeTaskResults is the data type used in run task responses.
-// const TypeTaskResults = "task-results"
-
-// type callbackResponse struct {
-// 	Data api.CallbackData `json:"data"`
-// }
-
-// type callbackData struct {
-// 	Type       string       `json:"type"`
-// 	Attributes api.Response `json:"attributes"`
-// }
+const typeTaskResults = "task-results"
+const typeTaskResultOutcomes = "task-result-outcomes"
 
 // Wrapper around api.TaskResponse to build the response in a fluent style.
 type CallbackBuilder struct {
 	resp api.TaskResponse
 }
 
+func NewCallbackBuilderTest(resp api.TaskResponse) *CallbackBuilder {
+	return &CallbackBuilder{
+		resp: resp,
+	}
+}
+
 func NewCallbackBuilder(status api.TaskStatus) *CallbackBuilder {
 	return &CallbackBuilder{
 		resp: api.TaskResponse{
 			Data: api.ResponseData{
-				Type: api.TypeTaskResults,
+				Type: typeTaskResults,
 				Attributes: api.ResponseAttributes{
 					Status: status,
 				},
@@ -44,41 +42,36 @@ func (cb *CallbackBuilder) WithMessage(message string) *CallbackBuilder {
 	return cb
 }
 
-func (cb *CallbackBuilder) WithUrl(url string) *CallbackBuilder {
-	// Causing the Details to be blank??
-	cb.resp.Data.Attributes.URL = url
-	return cb
-}
-
 func (cb *CallbackBuilder) WithRelationships() *CallbackBuilder {
 	cb.resp.Data.Relationships = &api.ResponseRelationships{
 		Outcomes: api.ResponseOutcomes{
 			Data: []api.ResponseOutcome{
 				{
-					Type: api.TypeTaskResultOutcomes,
+					Type: typeTaskResultOutcomes,
 					Attributes: api.ResponseOutcomeAttributes{
 						OutcomeID:   "outcome-1",
 						Description: "Description of outcome 1",
-						Tags: api.Tags{
-							Status: []api.Tag{
-								{
-									Label: "info",
-									Level: api.TagLevelInfo,
-								},
-							},
-							Severity: []api.Tag{
-								{
-									Label: "high",
-									Level: api.TagLevelError,
-								},
-							},
-							Custom: []api.Tag{
-								{
-									Label: "custom-tag",
-									Level: api.TagLevelNone,
-								},
-							},
-						},
+						URL:         "http://example.com/outcome-1",
+						// Tags: api.Tags{
+						// 	Status: []api.Tag{
+						// 		{
+						// 			Label: "info",
+						// 			Level: api.TagLevelInfo,
+						// 		},
+						// 	},
+						// 	Severity: []api.Tag{
+						// 		{
+						// 			Label: "high12345",
+						// 			Level: api.TagLevelError,
+						// 		},
+						// 	},
+						// 	Custom: []api.Tag{
+						// 		{
+						// 			Label: "custom-tag",
+						// 			Level: api.TagLevelNone,
+						// 		},
+						// 	},
+						// },
 						Body: "# Markdown Formatting Examples\n\n" +
 							"## Text Formatting\n" +
 							"**Bold text** and *italic text* and ***bold italic***\n" +
@@ -126,6 +119,44 @@ func (cb *CallbackBuilder) WithRelationships() *CallbackBuilder {
 	return cb
 }
 
+// func NewTaskResponseBuilder(status api.TaskStatus, message string) *CallbackBuilder {
+// 	return &CallbackBuilder{
+// 		resp: api.TaskResponse{
+// 			Data: api.ResponseData{
+// 				Type: typeTaskResults,
+// 				Attributes: api.ResponseAttributes{
+// 					Status:  status,
+// 					Message: message,
+// 				},
+// 			},
+// 		},
+// 	}
+// }
+
+func (cb *CallbackBuilder) WithUrl(url string) *CallbackBuilder {
+	// Basic validation to ensure the URL starts with http:// or https://
+	// Else don't set it - this will break the UI if not set correctly
+	if !strings.HasPrefix(url, "http://") && !strings.HasPrefix(url, "https://") {
+		return cb
+	}
+	cb.resp.Data.Attributes.URL = url
+	return cb
+}
+
+// func (cb *CallbackBuilder) WithOutcome(outcomeId string, description string, url string, body string) api.ResponseOutcome {
+// 	outcome := api.ResponseOutcome{
+// 		Type: typeTaskResultOutcomes,
+// 		Attributes: api.ResponseOutcomeAttributes{
+// 			OutcomeID:   outcomeId,
+// 			Description: description,
+// 			URL:         url,
+// 		},
+// 	}
+// 	cb.resp.Data.Relationships.Outcomes.Data = append(cb.resp.Data.Relationships.Outcomes.Data, outcome)
+// 	return outcome
+// }
+
+// Access Functions
 func (cb *CallbackBuilder) MarshallJSON() ([]byte, error) {
 	return json.Marshal(cb.resp)
 }

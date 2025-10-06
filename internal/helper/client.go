@@ -59,7 +59,7 @@ func (c *Client) DownloadPlanJson(outputDirectory string, request api.TaskReques
 func (c *Client) GetDataFromAPI(outputDirectory string, dataType string, request api.TaskRequest) error {
 	token := c.GetPermissiveToken()
 	if token == "" {
-		return nil // If no token, skip this step
+		return fmt.Errorf("permissive token not set in environment variable TERRAFORM_API_TOKEN")
 	}
 
 	hostname := c.GetHostname(request)

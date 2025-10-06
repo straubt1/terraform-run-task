@@ -6,14 +6,13 @@ package api
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"time"
 )
 
 // VerificationToken is a nonsense Terraform Cloud API token that should NEVER be valid.
 const verificationToken = "test-token"
 const JsonApiMediaTypeHeader = "application/vnd.api+json"
-const TypeTaskResults = "task-results"
-const TypeTaskResultOutcomes = "task-result-outcomes"
 
 type TaskStatus string
 
@@ -99,6 +98,75 @@ type TaskResponse struct {
 	Data ResponseData `json:"data"`
 }
 
+// func NewTaskResponse(status TaskStatus, message string) *TaskResponse {
+// Create a new TaskResponse with empty values
+// These will get set later
+func NewTaskResponse() *TaskResponse {
+	return &TaskResponse{
+		Data: ResponseData{
+			Type:       "task-results",
+			Attributes: ResponseAttributes{},
+			Relationships: &ResponseRelationships{
+				Outcomes: ResponseOutcomes{
+					Data: []ResponseOutcome{},
+				},
+			},
+		},
+	}
+}
+
+// ntr.AddOutcome("save-request", "Request saved to file successfully", "label-text", api.TagLevelInfo)
+func (r *TaskResponse) AddOutcome(outcomeId string, description string, body string, url string, label string, level ResponseTagLevel) *TaskResponse {
+	outcome := ResponseOutcome{
+		Type: "task-result-outcomes",
+		Attributes: ResponseOutcomeAttributes{
+			OutcomeID:   outcomeId,
+			Description: description,
+			Body:        body,
+			URL:         url,
+			Tags: Tags{
+				Status: []Tag{
+					{
+						Label: label,
+						Level: level,
+					},
+				},
+			},
+		},
+	}
+	r.Data.Relationships.Outcomes.Data = append(r.Data.Relationships.Outcomes.Data, outcome)
+	return r
+}
+
+// Set the overall result of the TaskResponse
+// This should be called after adding all outcomes
+func (r *TaskResponse) SetResult(status TaskStatus, message string) *TaskResponse {
+	r.Data.Attributes.Status = status
+	r.Data.Attributes.Message = message
+	return r
+}
+
+// Optionally set a URL for the TaskResponse
+func (r *TaskResponse) WithUrl(url string) *TaskResponse {
+	// Basic validation to ensure the URL starts with http:// or https://
+	// Else don't set it - this will break the UI if not set correctly
+	if strings.HasPrefix(url, "http://") || strings.HasPrefix(url, "https://") {
+		r.Data.Attributes.URL = url
+	}
+	return r
+}
+
+func (r *TaskResponse) IsPassed() bool {
+	for _, outcome := range r.Data.Relationships.Outcomes.Data {
+		for _, tag := range outcome.Attributes.Tags.Status {
+			if tag.Level == TagLevelError {
+				return false
+			}
+		}
+	}
+	return true // If no error tags found, return true
+}
+
 type ResponseData struct {
 	Type          string                 `json:"type"`
 	Attributes    ResponseAttributes     `json:"attributes"`
@@ -120,15 +188,18 @@ type ResponseOutcome struct {
 
 type ResponseOutcomeAttributes struct {
 	OutcomeID   string `json:"outcome-id"`
-	Description string `json:"description"`
+	Description string `json:"description,omitempty"`
 	Tags        Tags   `json:"tags,omitempty"`
-	Body        string `json:"body"`
+	Body        string `json:"body,omitempty"`
+	URL         string `json:"url,omitempty"`
 }
 
+// You can add additional tags here if needed
+// KIS here and just add to the Status tags for now
 type Tags struct {
-	Status   []Tag `json:"status,omitempty"`
-	Severity []Tag `json:"severity,omitempty"`
-	Custom   []Tag `json:"custom,omitempty"`
+	Status []Tag `json:"status,omitempty"`
+	// Severity []Tag `json:"severity,omitempty"`
+	// Custom   []Tag `json:"custom,omitempty"`
 }
 
 type ResponseTagLevel string

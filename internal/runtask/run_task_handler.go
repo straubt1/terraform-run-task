@@ -21,7 +21,11 @@ func HandleRequests(task *ScaffoldingRunTask) {
 	r := mux.NewRouter()
 
 	// Printing the HMAC key should be avoided in a production environment!
-	task.logger.Println("Registering " + task.config.Path + " route" + " with HMAC key set to " + task.config.HmacKey)
+	if task.config.HmacKey != "" {
+		task.logger.Println("Registering " + task.config.Path + " route (HMAC verification enabled)")
+	} else {
+		task.logger.Println("Registering " + task.config.Path + " route (HMAC verification disabled)")
+	}
 	r.HandleFunc(task.config.Path, handleTFCRequestWrapper(task, sendTFCCallbackResponse())).
 		Methods(http.MethodPost)
 
@@ -54,6 +58,8 @@ func healthcheck(task *ScaffoldingRunTask) func(w http.ResponseWriter, r *http.R
 func handleTFCRequestWrapper(task *ScaffoldingRunTask, callback func(http.ResponseWriter, *http.Request, api.TaskRequest, *ScaffoldingRunTask, *api.TaskResponse)) func(http.ResponseWriter, *http.Request) {
 	return func(w http.ResponseWriter, r *http.Request) {
 		task.logger.Println(task.config.Path + " called")
+		// Ensure body is closed when we're done
+		defer func() { _ = r.Body.Close() }()
 
 		// Parse request
 		var runTaskReq api.TaskRequest
@@ -118,17 +124,17 @@ func handleTFCRequestWrapper(task *ScaffoldingRunTask, callback func(http.Respon
 		// Call the appropriate stage function based on the stage in the request
 		var stageResponse *api.TaskResponse
 		var stageError error
-		if runTaskReq.Stage == api.PrePlan {
+		switch runTaskReq.Stage {
+		case api.PrePlan:
 			stageResponse, stageError = task.PrePlanStage(runTaskReq)
-		} else if runTaskReq.Stage == api.PostPlan {
+		case api.PostPlan:
 			stageResponse, stageError = task.PostPlanStage(runTaskReq)
-		} else if runTaskReq.Stage == api.PreApply {
+		case api.PreApply:
 			stageResponse, stageError = task.PreApplyStage(runTaskReq)
-		} else if runTaskReq.Stage == api.PostApply {
+		case api.PostApply:
 			stageResponse, stageError = task.PostApplyStage(runTaskReq)
-		} else {
+		default:
 			stageResponse = api.NewTaskResponse().SetResult(api.TaskFailed, "Run Task is running in an unknown stage: "+string(runTaskReq.Stage))
-
 			task.logger.Println("Run task is running in an unknown stage:", runTaskReq.Stage)
 		}
 
@@ -165,8 +171,9 @@ func sendTFCCallbackResponse() func(w http.ResponseWriter, r *http.Request, task
 		// Send PATCH callback response to TFC
 		tfcClient := helper.NewClient()
 		request, err := tfcClient.SendGenericHttpRequest(taskRequest.TaskResultCallbackURL, http.MethodPatch, taskRequest.AccessToken, respBody)
-		if request != nil {
-			_ = r.Body.Close()
+		// We don't need the response body here; just ensure it's closed if present
+		if request != nil && request.Body != nil {
+			_ = request.Body.Close()
 		}
 		if err != nil {
 			task.logger.Println("Error occurred while sending the callback response to TFC")
@@ -175,5 +182,7 @@ func sendTFCCallbackResponse() func(w http.ResponseWriter, r *http.Request, task
 		}
 
 		task.logger.Println("Sent run task response to TFC")
+		// Return 200 OK to the original caller
+		w.WriteHeader(http.StatusOK)
 	}
 }

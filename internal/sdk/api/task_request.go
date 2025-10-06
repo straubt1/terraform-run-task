@@ -6,7 +6,7 @@ import (
 	"time"
 )
 
-// VerificationToken is a nonsense Terraform Cloud API token that should NEVER be valid.
+// verificationToken is a placeholder token used only for endpoint validation checks from HCP Terraform.
 const verificationToken = "test-token"
 
 type TaskStatus string
@@ -84,6 +84,7 @@ func (r *TaskRequest) CreateRunTaskDirectoryStructure() (string, error) {
 	}
 	path := filepath.Join(".", r.WorkspaceName, r.RunID, stageFolder)
 	r.TaskDirectory = path
+	// Create folder tree if not present
 	err := os.MkdirAll(path, os.ModePerm)
 	return path, err
 }

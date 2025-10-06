@@ -6,7 +6,7 @@ We build a small, playful Run Task that doesn’t enforce policy or block runs. 
 
 Think of it as a flight recorder for your runs—not an air-traffic controller. It fetches and saves config files, plans, logs, and run metadata in a tidy folder layout.
 
-Use it to learn the Run Task workflow end to end or as a starting point for your own tasks. It covers all four stages: pre-plan, post-plan, pre-apply, and post-apply.
+Use it to learn the Run Task workflow end-to-end or as a starting point for your own tasks. It covers all four stages: pre-plan, post-plan, pre-apply, and post-apply.
 
 ## What is a Terraform Run Task?
 
@@ -113,7 +113,7 @@ This run task demonstrates the wealth of information available at each stage.
 
 Before getting started, make sure you have:
 
-- **Go 1.25+** installed (previous versions may work but not tested)
+- **Go 1.24+** installed (previous versions may work but not tested)
 - **Cloudflare CLI** (`cloudflared`) - install via `brew install cloudflared` on macOS
 - **Terraform** with access to HCP Terraform or Terraform Enterprise
 - An **HCP Terraform organization** where you can create workspaces and run tasks
@@ -129,7 +129,7 @@ Create a `.env` file in the project root with the following content:
 TERRAFORM_API_TOKEN=your_hcp_terraform_api_token_here
 ```
 
-This will be set when running the Task commands (or you can `export` yourself).
+This will be set when running the Task commands (or you can export it yourself).
 
 ### Step 1: Build and Run the Server
 
@@ -155,7 +155,7 @@ The server will start and listen for incoming requests from HCP Terraform.
 Since HCP Terraform needs to reach your local server, we use Cloudflare Tunnel to create a public endpoint:
 
 ```bash
-# Start the tunnel (runs in background)
+# Start the tunnel (runs in the background)
 task tunnel-start
 
 # Check if everything is working
@@ -171,7 +171,7 @@ Navigate to the setup directory and run Terraform to create the necessary resour
 ```bash
 cd test/setup
 
-# Update the organization name in main.tf to match your HCP Terraform org
+# Update the organization name in test/setup/main.tf to match your HCP Terraform org
 # Then initialize and apply
 terraform init
 terraform apply

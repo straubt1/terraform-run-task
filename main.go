@@ -19,4 +19,5 @@ func main() {
 	task := runtask.NewRunTask()
 	task.Configure(*port, *path, *hmacKey)
 	runtask.HandleRequests(task)
+
 }

@@ -1,8 +1,12 @@
 # Terraform Run Task - Getting Started
 
-A comprehensive example implementation of a Terraform Run Task that helps you understand how to build custom run tasks and explore the data available at each stage of the Terraform lifecycle.
+Want a hands-on, low-stakes way to learn Terraform Run Tasks? This repo is your sandbox.
 
-This project serves as both a learning tool and a starting point for building your own run tasks. It demonstrates how to intercept and process data during the four key stages of a Terraform run: pre-plan, post-plan, pre-apply, and post-apply.
+We build a small, playful Run Task that doesn’t enforce policy or block runs. It listens at each lifecycle stage and captures useful artifacts and API responses so you can explore exactly what Terraform exposes along the way.
+
+Think of it as a flight recorder for your runs—not an air-traffic controller. It fetches and saves config files, plans, logs, and run metadata in a tidy folder layout.
+
+Use it to learn the Run Task workflow end to end or as a starting point for your own tasks. It covers all four stages: pre-plan, post-plan, pre-apply, and post-apply.
 
 ## What is a Terraform Run Task?
 
@@ -63,11 +67,15 @@ This run task demonstrates the wealth of information available at each stage.
 ### All Stages
 
 - **Request payload**: The initial request from HCP Terraform (`request.json`)
+- **Response payload**: The response the Run Task sent to HCP Terraform (`response.json`)
 - **Run details**: Basic information about the Terraform run (`run_api.json`)
 
 ### Pre-Plan Stage
 
 - **Configuration files**: The actual Terraform code being executed (`{config-version-id}.tar.gz` and `{config-version-id}/`)
+
+> [!note]
+> Files are found at `bin/local-runtask-test/run-{run-id}/1_pre_plan/`
 
 ### Post-Plan Stage
 
@@ -76,12 +84,18 @@ This run task demonstrates the wealth of information available at each stage.
 - **Plan details**: Basic information about the Plan (`plan_api.json`)
 - **Plan logs**: Detailed logs from Terraform Plan (`plan_logs.txt`)
 
+> [!note]
+> Files are found at `bin/local-runtask-test/run-{run-id}/2_post_plan/`
+
 ### Pre-Apply Stage
 
 - **Policy-check details**: Basic information about any policy checks (`policy-checks_api.json`)
 - **Comments details**: Any comments added to the run (`comments_api.json`)
 - **Task-stages details**: Basic information about the run task stages (`task_stages_api.json`)
 - **Run-events details**: Basic information about the run events (`run_events_api.json`)
+
+> [!note]
+> Files are found at `bin/local-runtask-test/run-{run-id}/3_pre_apply/`
 
 ### Post-Apply Stage
 
@@ -92,27 +106,30 @@ This run task demonstrates the wealth of information available at each stage.
 - **Task-stages details**: Basic information about the run task stages (`task_stages_api.json`)
 - **Run-events details**: Basic information about the run events (`run_events_api.json`)
 
+> [!note]
+> Files are found at `bin/local-runtask-test/run-{run-id}/4_post_apply/`
+
 ## Prerequisites
 
 Before getting started, make sure you have:
 
-- **Go 1.19+** installed
-- **Task** (task runner) - install via `brew install go-task/tap/go-task` on macOS
+- **Go 1.25+** installed (previous versions may work but not tested)
 - **Cloudflare CLI** (`cloudflared`) - install via `brew install cloudflared` on macOS
 - **Terraform** with access to HCP Terraform or Terraform Enterprise
 - An **HCP Terraform organization** where you can create workspaces and run tasks
+- (optional) **Task** (task runner) - install via `brew install go-task/tap/go-task` on macOS
 
 ## Quick Start
 
 ### Step 0: Set Up Environment
 
-create a `.env` file in the project root with the following content:
+Create a `.env` file in the project root with the following content:
 
 ```env
 TERRAFORM_API_TOKEN=your_hcp_terraform_api_token_here
 ```
 
-This will be set when running the Task commands.
+This will be set when running the Task commands (or you can `export` yourself).
 
 ### Step 1: Build and Run the Server
 
@@ -120,6 +137,8 @@ The run task is implemented as a simple Go web server. Use the included Task run
 
 ```bash
 # Generate HMAC key for secure communication
+# This will generate a key and save it to bin/hmac.key, that file is used when starting the server 
+# And running the setup via Terraform
 task generate-hmac
 
 # Build the Go application
@@ -183,7 +202,8 @@ After the run completes, check the `bin/local-runtask-test/` directory. You'll f
 bin/local-runtask-test/
 └── run-{run-id}/
     ├── 1_pre_plan/
-    │   ├── request.json
+    │   ├── request.json    
+    │   ├── response.json
     │   ├── run_api.json
     │   ├── cv-{version-id}.tar.gz
     │   └── cv-{version-id}/

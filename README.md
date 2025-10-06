@@ -8,6 +8,8 @@ Think of it as a flight recorder for your runs—not an air-traffic controller. 
 
 Use it to learn the Run Task workflow end-to-end or as a starting point for your own tasks. It covers all four stages: pre-plan, post-plan, pre-apply, and post-apply.
 
+Once you have a handle on the approach, be sure to take a look at the [Displaying Run Task Results](Displaying-Run-Task-Results.md) doc to see how to customize the Run Task response and display results in the UI.
+
 ## What is a Terraform Run Task?
 
 Run tasks are custom HTTP services that HCP Terraform or Terraform Enterprise can call during specific stages of a Terraform run. They enable you to integrate custom validation, compliance checks, notifications, or any other logic into your Terraform workflow.
@@ -25,6 +27,7 @@ sequenceDiagram
 
     Note over TF,FS: Run Task Lifecycle
     
+    Note over TF,RT: pre_plan stage
     TF->>RT: 1. Pre-Plan Request
     RT<<->>TF: Fetch Data via API
     RT->>FS: Save data to bin/{run-id}/1_pre_plan/
@@ -33,12 +36,14 @@ sequenceDiagram
     Note over TF: Terraform Plan Execution
 
     TF->>RT: 2. Post-Plan Request
+    Note over TF,RT: post_plan stage
     RT<<->>TF: Fetch Data & Logs
     RT->>FS: Save data to bin/{run-id}/2_post_plan/
     RT->>TF: Return Success/Failure
     
     Note over TF: User Approval (if required)
 
+    Note over TF,RT: pre_apply stage
     TF->>RT: 3. Pre-Apply Request
     RT<<->>TF: Fetch Data & Logs
     RT->>FS: Save data to bin/{run-id}/3_pre_apply/
@@ -46,6 +51,7 @@ sequenceDiagram
 
     Note over TF: Terraform Apply Execution
 
+    Note over TF,RT: post_apply stage
     TF->>RT: 4. Post-Apply Request
     RT<<->>TF: Fetch Data & Logs
     RT->>FS: Save data to bin/{run-id}/4_post_apply/

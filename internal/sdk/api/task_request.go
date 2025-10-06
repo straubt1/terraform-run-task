@@ -1,15 +1,13 @@
-// Copyright (c) HashiCorp, Inc.
-// SPDX-License-Identifier: MPL-2.0
-
 package api
 
 import (
+	"os"
+	"path/filepath"
 	"time"
 )
 
-// VerificationToken is a nonsense Terraform Cloud API token that should NEVER be valid.
-const VerificationToken = "test-token"
-const JsonApiMediaTypeHeader = "application/vnd.api+json"
+// verificationToken is a placeholder token used only for endpoint validation checks from HCP Terraform.
+const verificationToken = "test-token"
 
 type TaskStatus string
 
@@ -19,14 +17,17 @@ const (
 	TaskRunning TaskStatus = "running"
 )
 
+type TaskStage string
+
 const (
-	PrePlan   string = "pre_plan"
-	PostPlan  string = "post_plan"
-	PreApply  string = "pre_apply"
-	PostApply string = "post_apply"
+	PrePlan   TaskStage = "pre_plan"
+	PostPlan  TaskStage = "post_plan"
+	PreApply  TaskStage = "pre_apply"
+	PostApply TaskStage = "post_apply"
 )
 
-type Request struct {
+// TaskRequest is the top level message sent to the Run Task.
+type TaskRequest struct {
 	AccessToken                     string    `json:"access_token"`
 	ConfigurationVersionDownloadURL string    `json:"configuration_version_download_url,omitempty"`
 	ConfigurationVersionID          string    `json:"configuration_version_id,omitempty"`
@@ -38,7 +39,7 @@ type Request struct {
 	RunCreatedBy                    string    `json:"run_created_by"`
 	RunID                           string    `json:"run_id"`
 	RunMessage                      string    `json:"run_message"`
-	Stage                           string    `json:"stage"`
+	Stage                           TaskStage `json:"stage"`
 	TaskResultCallbackURL           string    `json:"task_result_callback_url"`
 	TaskResultEnforcementLevel      string    `json:"task_result_enforcement_level"`
 	TaskResultID                    string    `json:"task_result_id"`
@@ -50,30 +51,40 @@ type Request struct {
 	WorkspaceID                     string    `json:"workspace_id"`
 	WorkspaceName                   string    `json:"workspace_name"`
 	WorkspaceWorkingDirectory       string    `json:"workspace_working_directory,omitempty"`
-	PlanJSONAPIURL                  string    `json:"plan_json_api_url,omitempty"` // Specific to post-plan and pre-apply stage
+	PlanJSONAPIURL                  string    `json:"plan_json_api_url,omitempty"`
+
+	// Internal use only, not part of the API, nor saved to disk after parsing to JSON
+	TaskDirectory string `json:"-"` // Directory where the run task is executed
 }
 
 // IsEndpointValidation returns true if the Request is from the
 // run task service to validate this API endpoint. Callers should
 // immediately return an HTTP 200 status code for these requests.
-func (r Request) IsEndpointValidation() bool {
-	return r.AccessToken == VerificationToken
+func (r TaskRequest) IsEndpointValidation() bool {
+	return r.AccessToken == verificationToken
 }
 
-type CallbackResponse struct {
-	Data CallbackData `json:"data"`
-}
-
-type CallbackData struct {
-	Type       string   `json:"type"`
-	Attributes Response `json:"attributes"`
-}
-
-type Response struct {
-	// A short message describing the status of the task.
-	Message string `json:"message,omitempty"`
-	// Must be one of TaskFailed, TaskPassed or TaskRunning
-	Status TaskStatus `json:"status"`
-	// URL that the user can use to get more information from the external service
-	URL string `json:"url,omitempty"`
+// During at Task execution for a specific stage, create the directory structure
+// and save the directory to the TaskRequest struct for easy access later.
+func (r *TaskRequest) CreateRunTaskDirectoryStructure() (string, error) {
+	// Prefix the stage folder with a number to make it easier to read
+	var stageFolder string
+	stageString := string(r.Stage)
+	switch r.Stage {
+	case PrePlan:
+		stageFolder = "1_" + stageString
+	case PostPlan:
+		stageFolder = "2_" + stageString
+	case PreApply:
+		stageFolder = "3_" + stageString
+	case PostApply:
+		stageFolder = "4_" + stageString
+	default:
+		stageFolder = stageString
+	}
+	path := filepath.Join(".", r.WorkspaceName, r.RunID, stageFolder)
+	r.TaskDirectory = path
+	// Create folder tree if not present
+	err := os.MkdirAll(path, os.ModePerm)
+	return path, err
 }

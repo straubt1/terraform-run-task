@@ -4,35 +4,34 @@
 package runtask
 
 import (
-	"bytes"
 	"encoding/json"
-	"fmt"
 	"io"
 	"net/http"
-	"os"
 
 	"github.com/gorilla/mux"
-	tfjson "github.com/hashicorp/terraform-json"
 
-	"github.com/hashicorp/terraform-run-task-scaffolding-go/internal/sdk/api"
-	"github.com/hashicorp/terraform-run-task-scaffolding-go/internal/sdk/handler"
+	"github.com/straubt1/terraform-run-task/internal/helper"
+	"github.com/straubt1/terraform-run-task/internal/sdk/api"
+	"github.com/straubt1/terraform-run-task/internal/sdk/handler"
 )
 
+// HandleRequests sets up the HTTP server and routes for handling TFC requests and health checks.
+// This function only runs once when the task server starts.
 func HandleRequests(task *ScaffoldingRunTask) {
 	r := mux.NewRouter()
 
-	task.logger.Println("Registering " + task.config.Path + " route")
-	r.HandleFunc(task.config.Path, handleTFCRequestWrapper(task, sendTFCCallbackResponse())).Methods(http.MethodPost)
+	// Printing the HMAC key should be avoided in a production environment!
+	if task.config.HmacKey != "" {
+		task.logger.Println("Registering " + task.config.Path + " route (HMAC verification enabled)")
+	} else {
+		task.logger.Println("Registering " + task.config.Path + " route (HMAC verification disabled)")
+	}
+	r.HandleFunc(task.config.Path, handleTFCRequestWrapper(task, sendTFCCallbackResponse())).
+		Methods(http.MethodPost)
 
 	task.logger.Println("Registering /healthcheck route")
-	r.HandleFunc("/healthcheck", func(w http.ResponseWriter, r *http.Request) {
-		task.logger.Println("/healthcheck called")
-		w.WriteHeader(http.StatusOK)
-		err := json.NewEncoder(w).Encode(map[string]string{"status": "available"})
-		if err != nil {
-			return
-		}
-	}).Methods(http.MethodGet)
+	r.HandleFunc("/healthcheck", healthcheck(task)).
+		Methods(http.MethodGet)
 
 	task.logger.Printf("Starting server on port %s", task.config.Addr)
 	err := http.ListenAndServe(task.config.Addr, r)
@@ -41,12 +40,29 @@ func HandleRequests(task *ScaffoldingRunTask) {
 	}
 }
 
-func handleTFCRequestWrapper(task *ScaffoldingRunTask, original func(http.ResponseWriter, *http.Request, api.Request, *ScaffoldingRunTask, *handler.CallbackBuilder)) func(http.ResponseWriter, *http.Request) {
+// Healthcheck endpoint, required to verify the service is running and to create the Run Task in HCP Terraform.
+func healthcheck(task *ScaffoldingRunTask) func(w http.ResponseWriter, r *http.Request) {
+
+	return func(w http.ResponseWriter, r *http.Request) {
+		task.logger.Println("/healthcheck called")
+		w.WriteHeader(http.StatusOK)
+		err := json.NewEncoder(w).Encode(map[string]string{"status": "available"})
+		if err != nil {
+			return
+		}
+	}
+}
+
+// This is the entry point for a Run Task request from HCP Terraform.
+// It validates the request, determines the stage, and calls the appropriate stage function.
+func handleTFCRequestWrapper(task *ScaffoldingRunTask, callback func(http.ResponseWriter, *http.Request, api.TaskRequest, *ScaffoldingRunTask, *api.TaskResponse)) func(http.ResponseWriter, *http.Request) {
 	return func(w http.ResponseWriter, r *http.Request) {
 		task.logger.Println(task.config.Path + " called")
+		// Ensure body is closed when we're done
+		defer func() { _ = r.Body.Close() }()
 
 		// Parse request
-		var runTaskReq api.Request
+		var runTaskReq api.TaskRequest
 		reqBody, err := io.ReadAll(r.Body)
 		if err != nil {
 			task.logger.Println("Error occurred while parsing the request")
@@ -60,6 +76,8 @@ func handleTFCRequestWrapper(task *ScaffoldingRunTask, original func(http.Respon
 			http.Error(w, "Bad Request", http.StatusBadRequest)
 			return
 		}
+
+		task.logger.Println("Run Task Stage:", runTaskReq.Stage, "for workspace:", runTaskReq.WorkspaceName, "and run ID:", runTaskReq.RunID)
 
 		requestSha := r.Header.Get(handler.HeaderTaskSignature)
 
@@ -90,59 +108,72 @@ func handleTFCRequestWrapper(task *ScaffoldingRunTask, original func(http.Respon
 				http.Error(w, "Unauthorized", http.StatusUnauthorized)
 				return
 			}
+			task.logger.Println("Successfully verified HMAC signature")
 		}
 
+		// IsEndpointValidation returns true if the Request is from the
+		// run task service to validate this API endpoint.
+		// This occurs when you create the Run Task in Organization
+		// Callers should immediately return an HTTP 200 status code for these requests.
 		if runTaskReq.IsEndpointValidation() {
-			task.logger.Println("Successfully validated TFC request")
+			task.logger.Println("Successfully validated TFC request - runTaskReq.IsEndpointValidation()")
 			w.WriteHeader(http.StatusOK)
 			return
 		}
 
-		callbackResp, err := task.VerifyRequest(runTaskReq)
-		if err != nil {
-			task.logger.Println("Error occurred during run task request verification")
-			http.Error(w, "Error during run task request verification:"+err.Error(), http.StatusInternalServerError)
-			return
+		// Call the appropriate stage function based on the stage in the request
+		var stageResponse *api.TaskResponse
+		var stageError error
+		switch runTaskReq.Stage {
+		case api.PrePlan:
+			stageResponse, stageError = task.PrePlanStage(runTaskReq)
+		case api.PostPlan:
+			stageResponse, stageError = task.PostPlanStage(runTaskReq)
+		case api.PreApply:
+			stageResponse, stageError = task.PreApplyStage(runTaskReq)
+		case api.PostApply:
+			stageResponse, stageError = task.PostApplyStage(runTaskReq)
+		default:
+			stageResponse = api.NewTaskResponse().SetResult(api.TaskFailed, "Run Task is running in an unknown stage: "+string(runTaskReq.Stage))
+			task.logger.Println("Run task is running in an unknown stage:", runTaskReq.Stage)
 		}
 
-		// Get TFC Plan if the task is running in the post-plan or pre-apply stages
-		if runTaskReq.Stage == api.PostPlan || runTaskReq.Stage == api.PreApply {
-			plan, err := retrieveTFCPlan(runTaskReq)
+		if stageError != nil {
+			stageResponse = api.NewTaskResponse().SetResult(api.TaskFailed, "Run Task had an unexpected error: "+stageError.Error())
 
-			if err != nil {
-				task.logger.Println("Error occurred while retrieving plan from TFC")
-				http.Error(w, "Bad Request: "+err.Error(), http.StatusNotFound)
-				return
-			}
-			task.logger.Println("Successfully retrieved plan from TFC")
-
-			callbackResp, err = task.VerifyPlan(runTaskReq, plan)
-			if err != nil {
-				task.logger.Println("Error occurred while verifying plan")
-				http.Error(w, "Error verifying plan:"+err.Error(), http.StatusInternalServerError)
-				return
-			}
+			task.logger.Println("Error occurred during stage execution:", stageError.Error())
 		}
 
-		original(w, r, runTaskReq, task, callbackResp)
+		// Call the original function to send the response back to TFC with the stage result
+		callback(w, r, runTaskReq, task, stageResponse)
 	}
 }
 
-func sendTFCCallbackResponse() func(w http.ResponseWriter, r *http.Request, reqBody api.Request, task *ScaffoldingRunTask, cbBuilder *handler.CallbackBuilder) {
-
-	return func(w http.ResponseWriter, r *http.Request, reqBody api.Request, task *ScaffoldingRunTask, cbBuilder *handler.CallbackBuilder) {
-
-		respBody, err := cbBuilder.MarshallJSON()
+// Function to reply back to HCP Terraform with the task result for the Stage.
+func sendTFCCallbackResponse() func(w http.ResponseWriter, r *http.Request, taskRequest api.TaskRequest, task *ScaffoldingRunTask, taskResponse *api.TaskResponse) {
+	return func(w http.ResponseWriter, r *http.Request, taskRequest api.TaskRequest, task *ScaffoldingRunTask, taskResponse *api.TaskResponse) {
+		respBody, err := json.Marshal(taskResponse)
 		if err != nil {
 			task.logger.Println("Unable to marshall callback response to TFC")
 			http.Error(w, "Bad Request", http.StatusBadRequest)
 			return
 		}
 
+		// Save response to file
+		// This is fairly ugly at the moment, but it works.
+		fileManager := helper.NewFileManager()
+		taskRequest.CreateRunTaskDirectoryStructure()
+		err = fileManager.SaveStructToFile(taskRequest.TaskDirectory, "response.json", taskResponse)
+		if err != nil {
+			task.logger.Printf("Warning: Failed to save response to file: %v", err)
+		}
+
 		// Send PATCH callback response to TFC
-		request, err := sendTFCRequest(reqBody.TaskResultCallbackURL, http.MethodPatch, reqBody.AccessToken, respBody)
-		if request != nil {
-			_ = r.Body.Close()
+		tfcClient := helper.NewClient()
+		request, err := tfcClient.SendGenericHttpRequest(taskRequest.TaskResultCallbackURL, http.MethodPatch, taskRequest.AccessToken, respBody)
+		// We don't need the response body here; just ensure it's closed if present
+		if request != nil && request.Body != nil {
+			_ = request.Body.Close()
 		}
 		if err != nil {
 			task.logger.Println("Error occurred while sending the callback response to TFC")
@@ -151,50 +182,7 @@ func sendTFCCallbackResponse() func(w http.ResponseWriter, r *http.Request, reqB
 		}
 
 		task.logger.Println("Sent run task response to TFC")
+		// Return 200 OK to the original caller
+		w.WriteHeader(http.StatusOK)
 	}
-
-}
-
-func retrieveTFCPlan(req api.Request) (tfjson.Plan, error) {
-
-	// Call TFC to get plan
-	resp, err := sendTFCRequest(req.PlanJSONAPIURL, "GET", req.AccessToken, nil)
-	if err != nil {
-		return tfjson.Plan{}, err
-	}
-
-	var tfPlan tfjson.Plan
-
-	if resp == nil {
-		return tfPlan, fmt.Errorf("expected Terraform plan from TFC but received none")
-	}
-
-	respBody, err := io.ReadAll(resp.Body)
-
-	_ = resp.Body.Close()
-
-	if err != nil {
-		return tfPlan, err
-	}
-
-	err = json.Unmarshal(respBody, &tfPlan)
-
-	if err != nil {
-		return tfPlan, err
-	}
-
-	return tfPlan, nil
-}
-
-func sendTFCRequest(url string, method string, accessToken string, body []byte) (*http.Response, error) {
-	req, err := http.NewRequest(method, url, bytes.NewReader(body))
-	if err != nil {
-		fmt.Printf("client: could not create request: %s\n", err)
-		os.Exit(1)
-	}
-
-	// Required headers to send to TFC
-	req.Header.Set("Content-Type", api.JsonApiMediaTypeHeader)
-	req.Header.Set("Authorization", "Bearer "+accessToken)
-	return http.DefaultClient.Do(req)
 }

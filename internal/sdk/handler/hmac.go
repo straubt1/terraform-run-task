@@ -9,6 +9,7 @@ import (
 	"encoding/hex"
 )
 
+// HeaderTaskSignature is the HTTP header Terraform sets with the hex-encoded HMAC of the request body.
 const HeaderTaskSignature = "X-Tfc-Task-Signature"
 
 func VerifyHMAC(requestBody []byte, requestSignature []byte, key []byte) (bool, error) {

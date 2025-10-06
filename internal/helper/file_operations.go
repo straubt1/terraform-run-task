@@ -24,7 +24,7 @@ func NewFileManager() *FileManager {
 	return &FileManager{}
 }
 
-// SaveStructToFile saves the any struct to a file as JSON
+// SaveStructToFile saves any struct to a file as JSON
 func (fm *FileManager) SaveStructToFile(outputDirectory string, filename string, s interface{}) error {
 	filePath := filepath.Join(outputDirectory, filename)
 	file, err := os.Create(filePath)

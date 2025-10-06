@@ -2,7 +2,7 @@
 
 When a Run Task is executed, it can return a status to indicate whether it succeeded or failed, but beyond that there are several options (and gotchas) to be aware of.
 
-All the logic explained here is implemented in the file `internal/api/task_response.go` and uses a fluent style function chaining approach.
+All the logic explained here is implemented in the file [`internal/api/task_response.go`](internal/api/task_response.go) and uses a fluent style function chaining approach.
 
 For more details of the API used to set the Run Task response, see the [Run Task Callback API](https://developer.hashicorp.com/terraform/enterprise/api-docs/run-tasks/run-tasks-integration#run-task-callback).
 
@@ -11,7 +11,7 @@ For more details of the API used to set the Run Task response, see the [Run Task
 Let's start with the most basic case where we have 'status' and 'message' set in the response.
 
 > [!NOTE]
-> In the screenshots below "local-runtask-test" is the name of the Run Task set by the admin who configured the Run Task in the Workspace.
+> In the screenshots below "local-runtask-test" is the name of the Run Task set by the admin who created the Run Task in the Organization.
 
 ### Message Set
 

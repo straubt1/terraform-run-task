@@ -411,7 +411,7 @@ The beauty of run tasks is that you have access to the full Terraform context an
 
 ### Terraform Failures
 
-If the `test/setup` Terraform fails during apply creating the run task, be sure that the webserver and tunnel are running and accessible.
+If the `hcp-terraform/setup` Terraform fails during apply creating the run task, be sure that the webserver and tunnel are running and accessible.
 HCP Terraform will perform a health check on the run task URL when creating the association and if it cannot reach the URL, the creation will fail.
 
 ### Run Task Not Triggered

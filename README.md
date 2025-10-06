@@ -125,7 +125,7 @@ sequenceDiagram
 This run task demonstrates the wealth of information available at each stage.
 
 > [!warning]
-> A Run Task is given a limited scope API token that can be used to fetch some data. However, this implementation goes beyond that and requires a more permissive token to fetch all the data shown here. This is primarily for learning and prototyping purposes. In a production scenario, you would typically only fetch the data you need for your specific validations or actions.
+> A Run Task request is given a limited scope API token in the payload that can be used to fetch some data. However, this implementation goes beyond that and requires a more permissive token to fetch all the data shown here. This is primarily for learning and prototyping purposes. In a production scenario, you would typically only fetch the data you need for your specific validations or actions.
 
 ### All Stages
 

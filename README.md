@@ -251,7 +251,7 @@ This will create:
 Now run Terraform in the test workspace to see the run task in action:
 
 ```bash
-cd hcp-terraform/test/run
+cd hcp-terraform/run
 terraform init
 terraform plan
 terraform apply

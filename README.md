@@ -124,6 +124,9 @@ sequenceDiagram
 
 This run task demonstrates the wealth of information available at each stage.
 
+> [!attention]
+> A Run Task is given a limited scope API token that can be used to fetch some data. However, this implementation goes beyond that and requires a more permissive token to fetch all the data shown here. This is primarily for learning and prototyping purposes. In a production scenario, you would typically only fetch the data you need for your specific validations or actions.
+
 ### All Stages
 
 - **Request payload**: The initial request from HCP Terraform (`request.json`)

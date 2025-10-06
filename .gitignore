@@ -25,3 +25,4 @@ go.work
 secrets/
 bin/
 .DS_Store
+.env

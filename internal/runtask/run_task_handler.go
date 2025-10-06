@@ -116,7 +116,6 @@ func handleTFCRequestWrapper(task *ScaffoldingRunTask, callback func(http.Respon
 		}
 
 		// Call the appropriate stage function based on the stage in the request
-		// var stageResponse *handler.CallbackBuilder
 		var stageResponse *api.TaskResponse
 		var stageError error
 		if runTaskReq.Stage == api.PrePlan {
@@ -131,14 +130,12 @@ func handleTFCRequestWrapper(task *ScaffoldingRunTask, callback func(http.Respon
 			stageResponse = api.NewTaskResponse().SetResult(api.TaskFailed, "Run Task is running in an unknown stage: "+string(runTaskReq.Stage))
 
 			task.logger.Println("Run task is running in an unknown stage:", runTaskReq.Stage)
-			// http.Error(w, "Bad Request: unknown stage "+string(runTaskReq.Stage), http.StatusBadRequest)
 		}
 
 		if stageError != nil {
 			stageResponse = api.NewTaskResponse().SetResult(api.TaskFailed, "Run Task had an unexpected error: "+stageError.Error())
 
 			task.logger.Println("Error occurred during stage execution:", stageError.Error())
-			// http.Error(w, "Error during stage execution:"+stageError.Error(), http.StatusInternalServerError)
 		}
 
 		// Call the original function to send the response back to TFC with the stage result
@@ -147,10 +144,9 @@ func handleTFCRequestWrapper(task *ScaffoldingRunTask, callback func(http.Respon
 }
 
 // Function to reply back to HCP Terraform with the task result for the Stage.
-func sendTFCCallbackResponse() func(w http.ResponseWriter, r *http.Request, reqBody api.TaskRequest, task *ScaffoldingRunTask, cbBuilder *api.TaskResponse) {
-	return func(w http.ResponseWriter, r *http.Request, reqBody api.TaskRequest, task *ScaffoldingRunTask, cbBuilder *api.TaskResponse) {
-		respBody, err := json.Marshal(cbBuilder)
-		// respBody, err := cbBuilder.MarshallJSON()
+func sendTFCCallbackResponse() func(w http.ResponseWriter, r *http.Request, taskRequest api.TaskRequest, task *ScaffoldingRunTask, taskResponse *api.TaskResponse) {
+	return func(w http.ResponseWriter, r *http.Request, taskRequest api.TaskRequest, task *ScaffoldingRunTask, taskResponse *api.TaskResponse) {
+		respBody, err := json.Marshal(taskResponse)
 		if err != nil {
 			task.logger.Println("Unable to marshall callback response to TFC")
 			http.Error(w, "Bad Request", http.StatusBadRequest)
@@ -160,16 +156,15 @@ func sendTFCCallbackResponse() func(w http.ResponseWriter, r *http.Request, reqB
 		// Save response to file
 		// This is fairly ugly at the moment, but it works.
 		fileManager := helper.NewFileManager()
-		reqBody.CreateRunTaskDirectoryStructure()
-		err = fileManager.SaveStructToFile(reqBody.TaskDirectory, "response.json", cbBuilder)
-		// err = fileManager.SaveStructToFile(reqBody.TaskDirectory, "response.json", cbBuilder.GetResponse())
+		taskRequest.CreateRunTaskDirectoryStructure()
+		err = fileManager.SaveStructToFile(taskRequest.TaskDirectory, "response.json", taskResponse)
 		if err != nil {
 			task.logger.Printf("Warning: Failed to save response to file: %v", err)
 		}
 
 		// Send PATCH callback response to TFC
 		tfcClient := helper.NewClient()
-		request, err := tfcClient.SendGenericHttpRequest(reqBody.TaskResultCallbackURL, http.MethodPatch, reqBody.AccessToken, respBody)
+		request, err := tfcClient.SendGenericHttpRequest(taskRequest.TaskResultCallbackURL, http.MethodPatch, taskRequest.AccessToken, respBody)
 		if request != nil {
 			_ = r.Body.Close()
 		}

@@ -296,8 +296,6 @@ bin/local-runtask-test/run-{run-id}/3_pre_apply
 
 ```shell
 $ tree bin/local-runtask-test/run-{run-id}/4_post_apply 
-```shell
-$ tree bin/local-runtask-test/run-{run-id}/4_post_apply 
 bin/local-runtask-test/run-{run-id}/4_post_apply
 ├── apply_api.json
 ├── apply_logs.txt
@@ -311,22 +309,6 @@ bin/local-runtask-test/run-{run-id}/4_post_apply
 
 1 directory, 9 files
 ```
-
-├── apply_api.json
-├── apply_logs.txt
-├── comments_api.json
-├── policy-checks_api.json
-├── request.json
-├── response.json
-├── run_api.json
-├── run-events_api.json
-└── task-stages_api.json
-
-1 directory, 9 files
-
-```
-
-
 
 ## Development Tips
 

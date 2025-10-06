@@ -70,12 +70,20 @@ tasks:
         kill -9 $(pgrep -f "cloudflared tunnel")
   healthcheck:
     desc: Check health using dynamic tunnel URL from url.txt
+    silent: true
     cmds:
       - |
-        if [ -f {{.TUNNEL_URLFILE}} ]; then
+        if [ ! -f {{.TUNNEL_URLFILE}} ]; then
+          echo "No tunnel URL found in url.txt. Run 'task tunnel-start' first."
+          exit 1
+        else
           DYNAMIC_URL=$(cat {{.TUNNEL_URLFILE}})
           echo "Using dynamic URL: $DYNAMIC_URL/healthcheck"
-          curl -v -H "Content-Type: application/json" "$DYNAMIC_URL/healthcheck"
-        else
-          echo "No tunnel URL found in url.txt. Run 'task tunnel-start' first."
+            HTTP_CODE=$(curl -s -o /dev/null -w "%{http_code}" -H "Content-Type: application/json" "$DYNAMIC_URL/healthcheck")
+            if [ "$HTTP_CODE" = "200" ]; then
+              echo "Health check passed (200 OK)"
+            else
+              echo "Health check failed (HTTP $HTTP_CODE)"
+              exit 1
+            fi
         fi

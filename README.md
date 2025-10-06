@@ -17,6 +17,60 @@ Run tasks are custom HTTP services that HCP Terraform or Terraform Enterprise ca
 > [!important]
 > This documentation focuses on HCP Terraform, but the concepts and code can be adapted for Terraform Enterprise as well.
 
+## Repository Structure
+
+This repository is organized to provide a clear separation between the run task implementation, helper utilities, and infrastructure setup.
+
+### Root Files
+
+- **`main.go`** - Entry point of the application. Parses command-line flags (port, path, HMAC key) and initializes the run task server.
+- **`Taskfile.yml`** - Task runner configuration with commands for building, running, tunnel management, and healthchecks.
+
+### Internal Packages
+
+#### `internal/runtask/`
+
+Core run task implementation:
+
+- **`run_task_stages.go`** - Implements the four run task stages (pre-plan, post-plan, pre-apply, post-apply). Each stage method fetches relevant data from HCP Terraform APIs and saves it locally. This is where you'd add custom logic for your own run tasks.
+- **`run_task_handler.go`** - HTTP server setup and request handling. Validates HMAC signatures, routes requests to appropriate stage handlers, and sends responses back to HCP Terraform.
+
+#### `internal/helper/`
+
+Utility packages for common operations:
+
+- **`client.go`** - HCP Terraform API client. Handles downloading configuration versions, plan JSON files, API data, and logs. Includes methods for making authenticated HTTP requests.
+- **`file_operations.go`** - File management utilities. Handles saving JSON structures to files and extracting tar.gz archives with security checks for path traversal.
+
+#### `internal/sdk/`
+
+SDK components for run task integration:
+
+##### `internal/sdk/api/`
+
+- **`task_request.go`** - Defines the `TaskRequest` structure received from HCP Terraform, including workspace info, run details, and stage information. Includes directory creation logic.
+- **`task_response.go`** - Defines the `TaskResponse` structure sent back to HCP Terraform. Provides fluent API for building responses with outcomes, tags, and URLs.
+- **`task_request_test.go`** / **`task_response_test.go`** - Unit tests for request and response structures.
+
+##### `internal/sdk/handler/`
+
+- **`configuration.go`** - Server configuration structure (address, path, HMAC key).
+- **`hmac.go`** - HMAC signature verification for secure communication with HCP Terraform.
+
+### HCP Terraform Setup
+
+#### `hcp-terraform/setup/`
+
+- **`main.tf`** - Terraform configuration to create the run task in your HCP Terraform organization, create a test workspace, and associate the run task with the workspace.
+
+#### `hcp-terraform/run/`
+
+- **`main.tf`** - Simple Terraform configuration used to test the run task. Creates a random pet name that changes on each run to trigger all four stages.
+
+### Images
+
+The `images/` directory contains screenshots demonstrating various run task UI presentations in HCP Terraform, used in the documentation files.
+
 ## Architecture Overview
 
 ```mermaid
@@ -69,6 +123,9 @@ sequenceDiagram
 ## What Data is Available?
 
 This run task demonstrates the wealth of information available at each stage.
+
+> [!warning]
+> A Run Task request is given a limited scope API token in the payload that can be used to fetch some data. However, this implementation goes beyond that and requires a more permissive token to fetch all the data shown here. This is primarily for learning and prototyping purposes. In a production scenario, you would typically only fetch the data you need for your specific validations or actions.
 
 ### All Stages
 
@@ -175,9 +232,9 @@ The tunnel URL will be automatically saved to `bin/tunnel/tunnel.url` for use in
 Navigate to the setup directory and run Terraform to create the necessary resources:
 
 ```bash
-cd test/setup
+cd hcp-terraform/setup
 
-# Update the organization name in test/setup/main.tf to match your HCP Terraform org
+# Update the organization name in hcp-terraform/setup/main.tf to match your HCP Terraform org
 # Then initialize and apply
 terraform init
 terraform apply
@@ -194,7 +251,7 @@ This will create:
 Now run Terraform in the test workspace to see the run task in action:
 
 ```bash
-cd test/run
+cd hcp-terraform/run
 terraform init
 terraform plan
 terraform apply
@@ -334,6 +391,13 @@ The run task server accepts these command-line flags:
 - Server logs will show incoming requests and processing details
 - The generated JSON files contain the exact data HCP Terraform sends
 
+### Timeout
+
+This example does not implement any heartbeat or timeout logic, but be aware of these limits when building your own run tasks:
+
+- **Progress/heartbeat:** If HCP Terraform doesn’t receive a progress update within 10 minutes, the request errors.
+- **Max duration:** If the task runs for more than 60 minutes, the request errors.
+
 ## Next Steps
 
 Once you understand how the run task works, you can:
@@ -350,7 +414,7 @@ The beauty of run tasks is that you have access to the full Terraform context an
 
 ### Terraform Failures
 
-If the `test/setup` Terraform fails during apply creating the run task, be sure that the webserver and tunnel are running and accessible.
+If the `hcp-terraform/setup` Terraform fails during apply creating the run task, be sure that the webserver and tunnel are running and accessible.
 HCP Terraform will perform a health check on the run task URL when creating the association and if it cannot reach the URL, the creation will fail.
 
 ### Run Task Not Triggered

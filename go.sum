@@ -1,4 +1,2 @@
 github.com/gorilla/mux v1.8.1 h1:TuBL49tXwgrFYWhqrNgrUNEY92u81SPhu7sTdzQEiWY=
 github.com/gorilla/mux v1.8.1/go.mod h1:AKf9I4AEqPTmMytcMc0KkNouC66V3BtZ4qD5fmWSiMQ=
-github.com/hashicorp/terraform-run-task-scaffolding-go v0.0.0-20240705014455-73c8ca35f2b8 h1:WF0MuBpIY0OTWW23fDQxKPOmcdTR7pshkKX4K5s6dVs=
-github.com/hashicorp/terraform-run-task-scaffolding-go v0.0.0-20240705014455-73c8ca35f2b8/go.mod h1:nF+POtZ5Z/1xRVJPn4wqwba9l2kK1d7LNbHZQYnc2v8=
